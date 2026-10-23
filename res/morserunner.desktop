@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Morse Runner
+GenericName=CW Contest Simulator
+Comment=Practice CW contest operating: pile-ups, QRM, QRN and QSB
+Exec=morserunner
+Icon=morserunner
+Terminal=false
+Categories=HamRadio;Education;Network;
+Keywords=morse;cw;contest;ham;radio;
