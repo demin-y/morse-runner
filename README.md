@@ -16,8 +16,9 @@ Plain C11 with a GTK 3 interface, built with a Makefile; runs on Linux, macOS an
   slow fading (QSB), auroral flutter and sloppy operators (LIDs) can be switched on and off.
 - **Four modes**: Pile-Up, Single Calls, WPX Competition and HST Competition.
 - **Keyboard first.** Enter Sends Message (ESM): one key moves the QSO forward. The F-keys,
-  the classic contest shortcuts, RIT and bandwidth on the arrows, speed on PgUp/PgDn. The keys
-  work with any keyboard layout, held keys do not repeat a message.
+  the classic contest shortcuts, RIT and bandwidth on the arrows, speed on PgUp/PgDn. Every
+  shortcut can be reassigned; the keys work with any keyboard layout, held keys do not repeat
+  a message.
 - **Live log checking.** Every QSO is checked against the other station's log: `✓`, or
   `NIL`, `DUP`, `RST`, `NR` for the errors. Verified score, multipliers, QSO rate and a rate
   histogram are updated as you go.
@@ -109,6 +110,8 @@ already sent is the same.
 
 ### Keyboard
 
+The default keys:
+
 | Key | Action |
 |---|---|
 | Enter | send what the QSO needs next, log it when complete (ESM) |
@@ -128,7 +131,13 @@ already sent is the same.
 | Ctrl+R | start / stop |
 | Ctrl+1 … Ctrl+4 | Pile-Up, Single Calls, WPX, HST |
 | Ctrl+, | settings (Esc returns to the QSO) |
-| Ctrl+? | all shortcuts |
+| Ctrl+? | all shortcuts, change them |
+
+Every shortcut can be changed: menu → Keyboard Shortcuts (Ctrl+?). Click a key to press a
+new one, **+** adds one more key to the action, the arrow button restores the default. A key
+taken by another action moves to the new one; letters, digits and the editing keys cannot
+be shortcuts, they type the call. The keys are saved in the `[Keys]` section of
+`MorseRunner.ini`.
 
 With a non-Latin layout (Russian, for example) the keys still work: the Latin character
 of the key is used. If the cursor has left the QSO fields, typing goes to the call field.
@@ -197,7 +206,7 @@ A few options exist only in the INI file:
       calllist     Master.dta and text call lists, callsign generator
       buf, rnd     audio sample buffers, random number distributions
     src/audio/     miniaudio output
-    src/ui/        GTK 3 window, settings, theme
+    src/ui/        GTK 3 window, settings, theme, keyboard shortcuts
     tests/         core tests
     res/           icon, desktop entry, Windows resources
 

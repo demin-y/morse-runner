@@ -3,6 +3,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #include "config.h"
 #include "buf.h"
+#include "keys.h"
 #include "theme.h"
 
 #include <glib.h>
@@ -240,6 +241,8 @@ void load_settings(Settings* s)
         if (theme) s->theme = (int)theme_mode_from_id(theme);
         else if (read_bool(kf, SEC_SYS, "DarkTheme", false)) s->theme = THEME_DARK;   // older versions
         g_free(theme);
+
+        keys_load(kf);
     }
     g_key_file_free(kf);
 }
@@ -277,6 +280,7 @@ void save_settings(const Settings* s)
     g_key_file_set_integer(kf, SEC_SYS, "BufSize", v);
     g_key_file_set_string(kf, SEC_SYS, "Theme", theme_mode_id((ThemeMode)s->theme));
     g_key_file_remove_key(kf, SEC_SYS, "DarkTheme", NULL);
+    keys_save(kf);
 
     g_key_file_save_to_file(kf, path_ini_file(), NULL);
     g_key_file_free(kf);

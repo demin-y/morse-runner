@@ -5,6 +5,7 @@
 #include "audio/audio_output.h"
 #include "config.h"
 #include "contest.h"
+#include "keys.h"
 #include "theme.h"
 #include "widgets.h"
 
@@ -119,6 +120,7 @@ static void update_receiver(App* a);
 static void show_placeholder(App* a);
 static void focus_call(App* a);
 static void refresh_call_lists(App* a);
+static void show_shortcuts(App* a);
 
 //------------------------------------------------------------------------------
 //                                  helpers
@@ -423,22 +425,6 @@ static void type_char(GtkWidget* entry, char c)
     gtk_editable_set_position(e, pos);
 }
 
-// keys that send a message or log a QSO: holding them must not repeat the action
-static bool is_action_key(guint keyval)
-{
-    switch (keyval) {
-    case GDK_KEY_F1: case GDK_KEY_F2: case GDK_KEY_F3: case GDK_KEY_F4:
-    case GDK_KEY_F5: case GDK_KEY_F6: case GDK_KEY_F7: case GDK_KEY_F8: case GDK_KEY_F9:
-    case GDK_KEY_Return: case GDK_KEY_KP_Enter: case GDK_KEY_ISO_Enter:
-    case GDK_KEY_Insert: case GDK_KEY_KP_Insert: case GDK_KEY_semicolon:
-    case GDK_KEY_period: case GDK_KEY_plus: case GDK_KEY_KP_Add: case GDK_KEY_bracketleft: case GDK_KEY_comma:
-    case GDK_KEY_KP_Decimal: case GDK_KEY_KP_Separator: case GDK_KEY_backslash:
-        return true;
-    default:
-        return false;
-    }
-}
-
 static void select_mode(App* a, int index)
 {
     if (is_running(a)) return;
@@ -453,114 +439,78 @@ static bool on_key_press(App* a, GdkEventKey* ev)
     const bool qsoField = focus == a->callEntry || focus == a->rstEntry || focus == a->nrEntry;
     if (focus && GTK_IS_ENTRY(focus) && !qsoField) return false;
 
-    // keys work the same with any keyboard layout: use the key of the first (Latin) layout
-    guint keyval = ev->keyval;
-    if (ev->group != 0) {
-        guint latin = 0;
-        GdkKeymap* keymap = gdk_keymap_get_for_display(gtk_widget_get_display(a->window));
-        if (gdk_keymap_translate_keyboard_state(keymap, ev->hardware_keycode, (GdkModifierType)ev->state, 0,
-                                                &latin, NULL, NULL, NULL))
-            keyval = latin;
-    }
-
-    const guint mods = ev->state & gtk_accelerator_get_default_mod_mask();
-    const bool ctrl = (mods & GDK_CONTROL_MASK) != 0;
-    const bool alt = (mods & GDK_MOD1_MASK) != 0;
-    const bool shift = (mods & GDK_SHIFT_MASK) != 0;
+    const KeyCombo combo = keys_from_event(ev, gdk_keymap_get_for_display(gtk_widget_get_display(a->window)));
+    const KeyAction action = keys_lookup(combo);
 
     // auto-repeat of a held key: one press, one message
     const guint code = ev->hardware_keycode & 0xFF;
-    if (is_action_key(keyval)) {
+    if (action != KA_NONE && !keys_repeats(action)) {
         if (a->keyDown[code]) return true;
         a->keyDown[code] = true;
     }
 
-    // Ctrl+1..4 choose the mode
-    if (ctrl && !alt && keyval >= GDK_KEY_1 && keyval <= GDK_KEY_4) {
-        select_mode(a, (int)(keyval - GDK_KEY_1));
+    switch (action) {
+    case KA_ESM: case KA_LOG:
+        if (!is_running(a)) run(a, selected_mode(a));
+        else process_enter(a, action == KA_LOG);
         return true;
-    }
-
-    switch (keyval) {
-    case GDK_KEY_F1: case GDK_KEY_F2: case GDK_KEY_F3: case GDK_KEY_F4:
-    case GDK_KEY_F5: case GDK_KEY_F6: case GDK_KEY_F7: case GDK_KEY_F8:
-        if (ctrl || alt) return false;
-        send_msg(a, FKEY_MSG[keyval - GDK_KEY_F1]);
+    case KA_CQ: case KA_NR: case KA_TU: case KA_MY: case KA_HIS: case KA_B4: case KA_QM: case KA_NIL:
+        send_msg(a, FKEY_MSG[action - KA_CQ]);
         return true;
-    case GDK_KEY_F9:
+    case KA_CALL_NR: call_and_nr(a); return true;
+    case KA_TU_LOG: tu_and_save(a); return true;
+    case KA_STOP_SENDING: abort_send(a); return true;
+    case KA_NEXT_FIELD: process_space(a); return true;
+    case KA_WIPE: wipe_boxes(a); return true;
+    case KA_RIT_UP: inc_rit(a, +50); return true;
+    case KA_RIT_DOWN: inc_rit(a, -50); return true;
+    case KA_BW_UP: change_bandwidth(a, +50); return true;
+    case KA_BW_DOWN: change_bandwidth(a, -50); return true;
+    case KA_SPEED_UP: change_speed(a, +1); return true;
+    case KA_SPEED_DOWN: change_speed(a, -1); return true;
+    case KA_START:
+        if (!is_running(a)) run(a, selected_mode(a));
+        return true;
+    case KA_START_HST:
         // as in the original program: Ctrl+F9 starts the HST competition
-        if (is_running(a) || alt) return true;
-        if (ctrl) {
+        if (!is_running(a)) {
             select_mode(a, RM_HST - RM_PILEUP);
             run(a, RM_HST);
-        } else {
-            run(a, selected_mode(a));
         }
         return true;
-    case GDK_KEY_F10:
-        return true;   // no menu bar
-    case GDK_KEY_F11:
-        wipe_boxes(a);
+    case KA_RUN_STOP:
+        if (is_running(a)) request_stop(a);
+        else run(a, selected_mode(a));
         return true;
-    case GDK_KEY_Escape:
-        abort_send(a);
+    case KA_MODE_PILEUP: case KA_MODE_SINGLE: case KA_MODE_WPX: case KA_MODE_HST:
+        select_mode(a, action - KA_MODE_PILEUP);
         return true;
-    case GDK_KEY_Insert: case GDK_KEY_KP_Insert: case GDK_KEY_semicolon:
-        call_and_nr(a);
-        return true;
-    case GDK_KEY_Return: case GDK_KEY_KP_Enter: case GDK_KEY_ISO_Enter:
-        if (!is_running(a)) run(a, selected_mode(a));
-        else process_enter(a, ctrl || shift || alt);
-        return true;
-    // Alt+Up/Down too: on macOS Ctrl+Up/Down belong to Mission Control
-    case GDK_KEY_Up: case GDK_KEY_KP_Up:
-        if (ctrl || alt) change_bandwidth(a, +50); else inc_rit(a, +50);
-        return true;
-    case GDK_KEY_Down: case GDK_KEY_KP_Down:
-        if (ctrl || alt) change_bandwidth(a, -50); else inc_rit(a, -50);
-        return true;
-    case GDK_KEY_Page_Up: case GDK_KEY_KP_Page_Up:
-        change_speed(a, +1);
-        return true;
-    case GDK_KEY_Page_Down: case GDK_KEY_KP_Page_Down:
-        change_speed(a, -1);
-        return true;
-    case GDK_KEY_w: case GDK_KEY_W:
-        if (ctrl || alt) { wipe_boxes(a); return true; }
-        break;
-    case GDK_KEY_space:
-        process_space(a);
-        return true;
-    case GDK_KEY_Tab: case GDK_KEY_ISO_Left_Tab: case GDK_KEY_KP_Tab: {
+    case KA_SETTINGS: gtk_popover_popup(GTK_POPOVER(a->settingsPopover)); return true;
+    case KA_SHORTCUTS: show_shortcuts(a); return true;
+    case KA_NONE: case KA_COUNT: break;
+    }
+
+    if (combo.key == GDK_KEY_F10) return true;   // no menu bar
+    if (combo.key == GDK_KEY_Tab) {
         // Tab cycles through the QSO fields only
         GtkWidget* order[3] = { a->callEntry, a->rstEntry, a->nrEntry };
         int idx = focus == a->rstEntry ? 1 : focus == a->nrEntry ? 2 : 0;
-        bool back = shift || keyval == GDK_KEY_ISO_Left_Tab;
+        bool back = (ev->state & GDK_SHIFT_MASK) || ev->keyval == GDK_KEY_ISO_Left_Tab;
         gtk_widget_grab_focus(order[(idx + (back ? 2 : 1)) % 3]);
         return true;
     }
-    case GDK_KEY_period: case GDK_KEY_plus: case GDK_KEY_KP_Add: case GDK_KEY_bracketleft: case GDK_KEY_comma:
-    case GDK_KEY_KP_Decimal: case GDK_KEY_KP_Separator:
-        if (ctrl) return false;
-        tu_and_save(a);
-        return true;
-    case GDK_KEY_backslash:
-        send_msg(a, MSG_CQ);
-        return true;
-    default:
-        break;
-    }
 
-    if (ctrl || alt || keyval < 0x21 || keyval >= 0x7F) return false;
+    const guint key = combo.key;
+    if ((combo.mods & ~GDK_SHIFT_MASK) || key < 0x21 || key >= 0x7F) return false;
     // the focus has left the QSO fields (a click elsewhere): typing goes to the call field
     if (!qsoField) {
         focus_call(a);
-        type_char(a->callEntry, (char)keyval);
+        type_char(a->callEntry, (char)key);
         return true;
     }
     // a non-Latin layout is active: type the Latin character of the key
     if (ev->group != 0) {
-        type_char(focus, (char)keyval);
+        type_char(focus, (char)key);
         return true;
     }
     return false;
@@ -683,61 +633,215 @@ static void show_history(App* a)
     gtk_widget_destroy(dlg);
 }
 
-typedef struct { const char* accel; const char* title; } ShortcutItem;
-
-static void add_shortcut_group(GtkWidget* section, const char* title, const ShortcutItem* items, int count)
+// the keys shown on the F-key buttons, the Start tooltip and the menu
+static void update_key_hints(App* a)
 {
-    GtkWidget* group = GTK_WIDGET(g_object_new(GTK_TYPE_SHORTCUTS_GROUP, "title", title, "visible", TRUE, NULL));
-    for (int i = 0; i < count; ++i) {
-        GtkWidget* sc = GTK_WIDGET(g_object_new(GTK_TYPE_SHORTCUTS_SHORTCUT, "accelerator", items[i].accel,
-                                                "title", items[i].title, "visible", TRUE, NULL));
-        gtk_container_add(GTK_CONTAINER(group), sc);
+    for (int i = 0; i < 8; ++i) {
+        KeyAction act = (KeyAction)(KA_CQ + i);
+        gchar* key = keys_count(act) ? keys_label(keys_get(act, 0)) : g_strdup("");
+        gchar* markup = g_markup_printf_escaped("<span alpha=\"55%%\" size=\"small\">%s</span>  %s", key, FKEY_LABEL[i]);
+        gtk_label_set_markup(GTK_LABEL(gtk_bin_get_child(GTK_BIN(a->fkeys[i]))), markup);
+        g_free(markup);
+        g_free(key);
     }
-    gtk_container_add(GTK_CONTAINER(section), group);
+    struct { KeyAction action; const char* name; } menu[] = {
+        { KA_RUN_STOP, "win.run" }, { KA_SETTINGS, "win.settings" }, { KA_SHORTCUTS, "win.shortcuts" },
+    };
+    GtkApplication* app = gtk_window_get_application(GTK_WINDOW(a->window));
+    for (size_t i = 0; app && i < G_N_ELEMENTS(menu); ++i) {
+        gchar** accels = keys_accels(menu[i].action);
+        gtk_application_set_accels_for_action(app, menu[i].name, (const char* const*)accels);
+        g_strfreev(accels);
+    }
+    update_controls(a);
+}
+
+// the first key of an action for a hint, "" if it has none; g_free() it
+static gchar* first_key(KeyAction act)
+{
+    return keys_count(act) ? keys_label(keys_get(act, 0)) : g_strdup("");
+}
+
+typedef struct {
+    App* app;
+    GtkWidget* dialog;
+    GtkWidget* list;
+    GtkWidget* status;
+    KeyAction action;   // the action getting new keys, KA_NONE when not capturing
+    int index;          // which of its keys; keys_count() = a new one
+} KeyEditor;
+
+static void editor_fill(KeyEditor* e);
+
+static void editor_changed(KeyEditor* e)
+{
+    App* a = e->app;
+    LOCK(a);
+    Settings cfg = a->tst.cfg;
+    UNLOCK(a);
+    save_settings(&cfg);   // the keys are saved with the settings
+    update_key_hints(a);
+    editor_fill(e);
+}
+
+static void cb_key_button(GtkButton* b, gpointer data)
+{
+    KeyEditor* e = data;
+    e->action = (KeyAction)GPOINTER_TO_INT(g_object_get_data(G_OBJECT(b), "action"));
+    e->index = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(b), "index"));
+    gtk_button_set_label(b, "Press keys…");
+    gtk_label_set_text(GTK_LABEL(e->status), "Press the new key combination. Esc cancels, Backspace removes the key.");
+}
+
+static void cb_key_reset(GtkButton* b, gpointer data)
+{
+    KeyEditor* e = data;
+    keys_reset((KeyAction)GPOINTER_TO_INT(g_object_get_data(G_OBJECT(b), "action")));
+    gtk_label_set_text(GTK_LABEL(e->status), "");
+    editor_changed(e);
+}
+
+static void cb_keys_reset_all(GtkButton* b, gpointer data)
+{
+    (void)b;
+    KeyEditor* e = data;
+    keys_reset_all();
+    gtk_label_set_text(GTK_LABEL(e->status), "All the keys are the default ones again.");
+    editor_changed(e);
+}
+
+static GtkWidget* key_button(KeyEditor* e, KeyAction act, int index, const char* label)
+{
+    GtkWidget* b = gtk_button_new_with_label(label);
+    g_object_set_data(G_OBJECT(b), "action", GINT_TO_POINTER(act));
+    g_object_set_data(G_OBJECT(b), "index", GINT_TO_POINTER(index));
+    g_signal_connect(b, "clicked", G_CALLBACK(cb_key_button), e);
+    return b;
+}
+
+static void editor_fill(KeyEditor* e)
+{
+    e->action = KA_NONE;
+    GList* old = gtk_container_get_children(GTK_CONTAINER(e->list));
+    for (GList* l = old; l; l = l->next) gtk_widget_destroy(l->data);
+    g_list_free(old);
+
+    GtkWidget* grid = gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(grid), 6);
+    gtk_grid_set_column_spacing(GTK_GRID(grid), 12);
+    int r = 0;
+    for (int g = 0; g < KG_COUNT; ++g) {
+        setting_header(grid, r++, keys_group_title((KeyGroup)g));
+        for (int i = 0; i < KA_COUNT; ++i) {
+            KeyAction act = (KeyAction)i;
+            if (keys_group(act) != (KeyGroup)g) continue;
+            GtkWidget* title = gtk_label_new(keys_title(act));
+            gtk_label_set_xalign(GTK_LABEL(title), 0);
+            gtk_label_set_line_wrap(GTK_LABEL(title), TRUE);
+            gtk_label_set_max_width_chars(GTK_LABEL(title), 32);
+            gtk_widget_set_hexpand(title, TRUE);
+            gtk_grid_attach(GTK_GRID(grid), title, 0, r, 1, 1);
+
+            GtkWidget* keys = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+            gtk_widget_set_valign(keys, GTK_ALIGN_CENTER);
+            for (int k = 0; k < keys_count(act); ++k) {
+                gchar* label = keys_label(keys_get(act, k));
+                gtk_container_add(GTK_CONTAINER(keys), key_button(e, act, k, label));
+                g_free(label);
+            }
+            if (keys_count(act) < MAX_COMBOS) {
+                GtkWidget* add = key_button(e, act, keys_count(act), "+");
+                add_class(add, "flat");
+                gtk_widget_set_tooltip_text(add, "Add a key");
+                gtk_container_add(GTK_CONTAINER(keys), add);
+            }
+            gtk_grid_attach(GTK_GRID(grid), keys, 1, r, 1, 1);
+
+            GtkWidget* reset = gtk_button_new_from_icon_name("edit-undo-symbolic", GTK_ICON_SIZE_BUTTON);
+            gtk_widget_set_tooltip_text(reset, "Back to the default keys");
+            gtk_widget_set_valign(reset, GTK_ALIGN_CENTER);
+            g_object_set_data(G_OBJECT(reset), "action", GINT_TO_POINTER(act));
+            g_signal_connect(reset, "clicked", G_CALLBACK(cb_key_reset), e);
+            gtk_widget_set_sensitive(reset, !keys_is_default(act));
+            gtk_grid_attach(GTK_GRID(grid), reset, 2, r, 1, 1);
+            ++r;
+        }
+    }
+    gtk_container_add(GTK_CONTAINER(e->list), grid);
+    gtk_widget_show_all(e->list);
+}
+
+static gboolean cb_editor_key(GtkWidget* w, GdkEventKey* ev, gpointer data)
+{
+    (void)w;
+    KeyEditor* e = data;
+    if (e->action == KA_NONE) return FALSE;   // Esc closes the window
+    if (ev->is_modifier) return TRUE;
+    KeyAction act = e->action;
+    if (ev->keyval == GDK_KEY_Escape) {
+        gtk_label_set_text(GTK_LABEL(e->status), "");
+    } else if (ev->keyval == GDK_KEY_BackSpace) {
+        keys_remove(act, e->index);
+        gtk_label_set_text(GTK_LABEL(e->status), "");
+    } else {
+        KeyCombo c = keys_from_event(ev, gdk_keymap_get_for_display(gtk_widget_get_display(w)));
+        gchar* label = keys_label(c);
+        if (!keys_allowed(c)) {
+            gchar* msg = g_strdup_printf("%s types into the QSO fields and cannot be a shortcut.", label);
+            gtk_label_set_text(GTK_LABEL(e->status), msg);
+            g_free(msg);
+        } else {
+            KeyAction owner = keys_set(act, e->index, c);
+            gchar* msg = owner == KA_NONE ? g_strdup("")
+                                          : g_strdup_printf("%s is no longer used for “%s”.", label, keys_title(owner));
+            gtk_label_set_text(GTK_LABEL(e->status), msg);
+            g_free(msg);
+        }
+        g_free(label);
+    }
+    editor_changed(e);
+    return TRUE;
 }
 
 static void show_shortcuts(App* a)
 {
-    static const ShortcutItem qso[] = {
-        { "Return", "Send what the QSO needs next and log it (ESM)" },
-        { "<Ctrl>Return <Shift>Return", "Log the QSO" },
-        { "F1 backslash", "CQ" },
-        { "F2", "Exchange" },
-        { "F3", "TU" },
-        { "F4", "My call" },
-        { "F5", "His call" },
-        { "F6", "QSO B4" },
-        { "F7", "?" },
-        { "F8", "NIL" },
-        { "semicolon Insert", "His call + exchange" },
-        { "period plus bracketleft comma KP_Decimal", "TU and log the QSO" },
-        { "Escape", "Stop sending" },
-    };
-    static const ShortcutItem fields[] = {
-        { "space", "Next field, fills in 599" },
-        { "Tab <Shift>Tab", "Next / previous field" },
-        { "<Ctrl>w <Alt>w F11", "Wipe the fields" },
-    };
-    static const ShortcutItem radio[] = {
-        { "Up Down", "RIT ±50 Hz" },
-        { "<Ctrl>Up <Ctrl>Down <Alt>Up <Alt>Down", "Bandwidth ±50 Hz" },
-        { "Page_Up Page_Down", "Speed ±5 WPM" },
-        { "F9 Return", "Start (when stopped)" },
-        { "<Ctrl>F9", "Start the HST competition (when stopped)" },
-        { "<Ctrl>r", "Start / stop" },
-        { "<Ctrl>1 <Ctrl>2 <Ctrl>3 <Ctrl>4", "Mode: Pile-Up, Single Calls, WPX, HST" },
-        { "<Ctrl>comma", "Settings" },
-    };
+    KeyEditor e = { .app = a, .action = KA_NONE };
+    e.dialog = gtk_dialog_new_with_buttons("Keyboard Shortcuts", GTK_WINDOW(a->window),
+                                           GTK_DIALOG_MODAL | GTK_DIALOG_USE_HEADER_BAR, NULL, NULL);
+    gtk_window_set_default_size(GTK_WINDOW(e.dialog), 760, 640);
+    GtkWidget* area = gtk_dialog_get_content_area(GTK_DIALOG(e.dialog));
 
-    GtkWidget* win = GTK_WIDGET(g_object_new(GTK_TYPE_SHORTCUTS_WINDOW, "modal", TRUE,
-                                             "transient-for", a->window, NULL));
-    GtkWidget* section = GTK_WIDGET(g_object_new(GTK_TYPE_SHORTCUTS_SECTION, "section-name", "main",
-                                                 "max-height", 14, "visible", TRUE, NULL));
-    add_shortcut_group(section, "QSO", qso, (int)(sizeof(qso) / sizeof(qso[0])));
-    add_shortcut_group(section, "Fields", fields, (int)(sizeof(fields) / sizeof(fields[0])));
-    add_shortcut_group(section, "Radio", radio, (int)(sizeof(radio) / sizeof(radio[0])));
-    gtk_container_add(GTK_CONTAINER(win), section);
-    gtk_widget_show_all(win);
+    GtkWidget* hint = gtk_label_new("Click a key to change it, + to add one. The keys are saved at once.");
+    add_class(hint, "mr-placeholder");
+    gtk_widget_set_halign(hint, GTK_ALIGN_START);
+    gtk_widget_set_margin_start(hint, 16);
+    gtk_widget_set_margin_top(hint, 8);
+    gtk_box_pack_start(GTK_BOX(area), hint, FALSE, FALSE, 0);
+
+    GtkWidget* scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    e.list = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_container_set_border_width(GTK_CONTAINER(e.list), 16);
+    gtk_container_add(GTK_CONTAINER(scroll), e.list);
+    gtk_box_pack_start(GTK_BOX(area), scroll, TRUE, TRUE, 0);
+
+    GtkWidget* bottom = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    gtk_container_set_border_width(GTK_CONTAINER(bottom), 12);
+    e.status = gtk_label_new(NULL);
+    gtk_label_set_xalign(GTK_LABEL(e.status), 0);
+    gtk_label_set_line_wrap(GTK_LABEL(e.status), TRUE);
+    gtk_box_pack_start(GTK_BOX(bottom), e.status, TRUE, TRUE, 0);
+    GtkWidget* resetAll = gtk_button_new_with_label("Reset All");
+    g_signal_connect(resetAll, "clicked", G_CALLBACK(cb_keys_reset_all), &e);
+    gtk_box_pack_end(GTK_BOX(bottom), resetAll, FALSE, FALSE, 0);
+    gtk_box_pack_end(GTK_BOX(area), bottom, FALSE, FALSE, 0);
+
+    g_signal_connect(e.dialog, "key-press-event", G_CALLBACK(cb_editor_key), &e);
+    editor_fill(&e);
+    gtk_widget_show_all(e.dialog);
+    gtk_dialog_run(GTK_DIALOG(e.dialog));
+    gtk_widget_destroy(e.dialog);
+    focus_call(a);
 }
 
 static void show_about(App* a)
@@ -1015,7 +1119,16 @@ static void update_controls(App* a)
     if (old) gtk_widget_destroy(old);
     gtk_container_add(GTK_CONTAINER(a->runButton), label);
     gtk_widget_show_all(a->runButton);
-    gtk_widget_set_tooltip_text(a->runButton, stop ? "Start the contest  (Enter, F9, Ctrl+R)" : "Stop  (Ctrl+R)");
+    gchar* enter = first_key(KA_ESM);
+    gchar* start = first_key(KA_START);
+    gchar* runStop = first_key(KA_RUN_STOP);
+    gchar* tip = stop ? g_strdup_printf("Start the contest  (%s, %s, %s)", enter, start, runStop)
+                      : g_strdup_printf("Stop  (%s)", runStop);
+    gtk_widget_set_tooltip_text(a->runButton, tip);
+    g_free(tip);
+    g_free(enter);
+    g_free(start);
+    g_free(runStop);
     GtkStyleContext* ctx = gtk_widget_get_style_context(a->runButton);
     gtk_style_context_remove_class(ctx, stop ? "destructive-action" : "suggested-action");
     gtk_style_context_add_class(ctx, stop ? "suggested-action" : "destructive-action");
@@ -1691,7 +1804,7 @@ static void build_header(App* a)
     gtk_window_set_titlebar(GTK_WINDOW(a->window), a->header);
 }
 
-static void build_actions(App* a, GtkApplication* gtkApp)
+static void build_actions(App* a)
 {
     const char* names[] = { "run", "history", "play", "folder", "shortcuts", "about", "settings" };
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
@@ -1707,12 +1820,6 @@ static void build_actions(App* a, GtkApplication* gtkApp)
     g_action_map_add_action(G_ACTION_MAP(a->window), G_ACTION(theme));
     g_object_unref(theme);
 
-    const char* runAccels[] = { "<Primary>r", NULL };
-    const char* settingsAccels[] = { "<Primary>comma", NULL };
-    const char* shortcutAccels[] = { "<Primary>question", NULL };
-    gtk_application_set_accels_for_action(gtkApp, "win.run", runAccels);
-    gtk_application_set_accels_for_action(gtkApp, "win.settings", settingsAccels);
-    gtk_application_set_accels_for_action(gtkApp, "win.shortcuts", shortcutAccels);
 }
 
 static GtkWidget* value_label(const char* text, const char* tip)
@@ -1861,10 +1968,7 @@ static GtkWidget* build_keys(App* a)
     GtkWidget* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     gtk_box_set_homogeneous(GTK_BOX(row), TRUE);
     for (int i = 0; i < 8; ++i) {
-        char markup[128];
-        snprintf(markup, sizeof(markup), "<span alpha=\"55%%\" size=\"small\">F%d</span>  %s", i + 1, FKEY_LABEL[i]);
-        GtkWidget* label = gtk_label_new(NULL);
-        gtk_label_set_markup(GTK_LABEL(label), markup);
+        GtkWidget* label = gtk_label_new(NULL);   // the text: update_key_hints
         GtkWidget* b = gtk_button_new();
         gtk_container_add(GTK_CONTAINER(b), label);
         gtk_widget_set_can_focus(b, FALSE);
@@ -1938,7 +2042,7 @@ App* app_new(GtkApplication* gtkApp)
     g_object_unref(icon);
 
     build_header(a);
-    build_actions(a, gtkApp);
+    build_actions(a);
 
     GtkWidget* root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
     gtk_container_set_border_width(GTK_CONTAINER(root), 14);
@@ -1958,6 +2062,7 @@ App* app_new(GtkApplication* gtkApp)
 
     refresh_call_lists(a);
     use_call_list(a, a->tst.cfg.callList, false);
+    update_key_hints(a);
     sync_settings_widgets(a);
     update_controls(a);
     update_title(a);
