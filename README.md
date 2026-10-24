@@ -76,11 +76,14 @@ To run the program outside the MSYS2 shell, copy the DLLs it needs next to it:
 
     ldd build/morserunner.exe | grep ucrt64 | awk '{print $3}' | xargs -I{} cp {} build/
 
+Keep the `lang` folder next to `morserunner.exe` for the translations.
+
 ### Other targets
 
 | Command | |
 |---|---|
 | `make test` | build and run the core tests (complete simulated QSOs included); needs GLib only |
+| `make lang-check` | check the translations in `lang/` against the texts of the program |
 | `make run` | build and start the program |
 | `make DEBUG=1` | no optimization, AddressSanitizer and UBSan (Linux, macOS) |
 | `make CC=clang` | build with clang |
@@ -168,6 +171,19 @@ repeated within a run. The list can only be changed while the contest is stopped
 Menu → Theme: **As in the System** follows the desktop (GTK theme, `GTK_THEME`, GNOME dark
 style, Windows and macOS dark mode); **Light** and **Dark** work whatever the desktop uses.
 
+### Language
+
+Menu → Language: **As in the System** follows the desktop language, or pick one of the
+translations found; the new language is used from the next start. English and Russian come
+with the program.
+
+A translation is a plain text file `lang/<code>.ini`. To add a language, copy
+[`lang/en.ini`](lang/en.ini) to, say, `de.ini`, set `Name` and `Code`, translate the texts
+after the `=` (keep `%s`, `%d` and the other `%` codes in their order) and put the file into
+the `lang` folder of the data folder (see below) — it appears in the menu. A text left out
+stays in English; deleting the file removes the language. `make lang-check` checks the
+translations in `lang/` against the texts of the program.
+
 ## Files
 
 | | Linux | macOS | Windows |
@@ -180,6 +196,7 @@ The settings are in `MorseRunner.ini`. The data folder (menu → Open Data Folde
 | File | |
 |---|---|
 | `calls/` | your call lists |
+| `lang/` | your translations (they take precedence over the installed ones) |
 | `ScoreList.txt` | WPX results: date, call, QSO points, multipliers |
 | `HstResults.txt` | HST results |
 | `MorseRunner.wav` | the recording of the last session (Settings → Record audio) |
@@ -206,9 +223,11 @@ A few options exist only in the INI file:
       calllist     Master.dta and text call lists, callsign generator
       buf, rnd     audio sample buffers, random number distributions
     src/audio/     miniaudio output
-    src/ui/        GTK 3 window, settings, theme, keyboard shortcuts
+    src/ui/        GTK 3 window, settings, theme, keyboard shortcuts, translations
     tests/         core tests
+    lang/          translations of the interface
     res/           icon, desktop entry, Windows resources
+    tools/         lang-check.sh
 
 ## По-русски
 
@@ -224,6 +243,10 @@ Morse Runner — симулятор CW-контеста: pile-up, приём п�
 Свои списки позывных (`.dta` Super Check Partial или текст, позывной в строке) добавляются в
 настройках, блок **Call list**: так можно заранее привыкнуть к позывным конкретного соревнования,
 например чемпионата России на КВ.
+
+Интерфейс переведён на русский: меню → Language → Русский (или «как в системе»). Перевод —
+обычный текстовый файл `lang/ru.ini`; свой язык добавляется копией `lang/en.ini` в папку `lang`
+папки данных.
 
 ## License
 

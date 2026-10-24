@@ -237,6 +237,7 @@ void load_settings(Settings* s)
 
         // audio block = 64 << BufSize samples, 1..5, smaller = faster response
         s->bufSize = 64 << read_int(kf, SEC_SYS, "BufSize", 3, 1, 5);
+        read_string(kf, SEC_SYS, "Language", s->language, sizeof(s->language));
         gchar* theme = g_key_file_get_string(kf, SEC_SYS, "Theme", NULL);
         if (theme) s->theme = (int)theme_mode_from_id(theme);
         else if (read_bool(kf, SEC_SYS, "DarkTheme", false)) s->theme = THEME_DARK;   // older versions
@@ -279,6 +280,7 @@ void save_settings(const Settings* s)
     while (v < 5 && (64 << v) < s->bufSize) ++v;
     g_key_file_set_integer(kf, SEC_SYS, "BufSize", v);
     g_key_file_set_string(kf, SEC_SYS, "Theme", theme_mode_id((ThemeMode)s->theme));
+    g_key_file_set_string(kf, SEC_SYS, "Language", s->language);
     g_key_file_remove_key(kf, SEC_SYS, "DarkTheme", NULL);
     keys_save(kf);
 

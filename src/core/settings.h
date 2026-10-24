@@ -57,6 +57,7 @@ typedef struct {
     // system
     int bufSize;        // samples per audio block
     int theme;          // UI: 0 as in the system, 1 light, 2 dark
+    char language[16];  // UI: the code of the translation, "" = as in the system
 
     RunMode runMode;
 } Settings;

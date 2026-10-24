@@ -3,7 +3,8 @@
 #   make              build build/morserunner
 #   make test         build and run the core tests
 #   make run          build and start the program
-#   make install      install to $(PREFIX) (Linux: binary, desktop entry, icon)
+#   make install      install to $(PREFIX): the program, translations (Linux: desktop entry, icon)
+#   make lang-check   check that lang/*.ini match the texts of the sources
 #   make clean
 #
 # Linux, macOS (Homebrew) and Windows (MSYS2 UCRT64/MINGW64 shell).
@@ -95,11 +96,18 @@ MA_OBJ    := $(BUILD)/third_party/miniaudio/miniaudio.o
 CORE_LIB  := $(BUILD)/libmrcore.a
 
 TARGET    := $(BUILD)/morserunner$(EXE)
+# the translations next to the program, as the installed ones are
+LANG_FILES := $(wildcard lang/*.ini)
+BUILD_LANG := $(LANG_FILES:%=$(BUILD)/%)
 TEST_BIN  := $(BUILD)/core_tests$(EXE)
 
-.PHONY: all test run install uninstall clean
+.PHONY: all test run install uninstall clean lang-check
 
-all: $(TARGET)
+all: $(TARGET) $(BUILD_LANG)
+
+$(BUILD)/lang/%.ini: lang/%.ini
+	@mkdir -p $(dir $@)
+	cp $< $@
 
 $(TARGET): $(APP_OBJS) $(MA_OBJ) $(CORE_LIB) $(PLATFORM_OBJS)
 	$(CC) -o $@ $(APP_OBJS) $(MA_OBJ) $(PLATFORM_OBJS) $(CORE_LIB) $(GTK_LIBS) $(PLATFORM_LIBS) $(SAN_LDFLAGS) $(LDFLAGS)
@@ -142,15 +150,19 @@ $(BUILD)/tests/%.o: tests/%.c
 test: $(TEST_BIN)
 	$(TEST_BIN)
 
-run: $(TARGET)
+lang-check:
+	sh tools/lang-check.sh
+
+run: all
 	$(TARGET)
 
 # ---- install ------------------------------------------------------------------
-install: $(TARGET)
+install: all
 ifeq ($(PLATFORM),macos)
 	$(error make install is not supported on macOS: run build/morserunner)
 endif
 	install -Dm755 $(TARGET) $(DESTDIR)$(PREFIX)/bin/morserunner$(EXE)
+	for f in $(LANG_FILES); do install -Dm644 $$f $(DESTDIR)$(PREFIX)/share/morserunner/$$f; done
 ifeq ($(PLATFORM),linux)
 	install -Dm644 res/morserunner.desktop $(DESTDIR)$(PREFIX)/share/applications/morserunner.desktop
 	install -Dm644 res/morserunner.svg $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/morserunner.svg
@@ -158,6 +170,7 @@ endif
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/morserunner$(EXE)
+	rm -rf $(DESTDIR)$(PREFIX)/share/morserunner
 	rm -f $(DESTDIR)$(PREFIX)/share/applications/morserunner.desktop
 	rm -f $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/morserunner.svg
 

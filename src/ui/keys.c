@@ -2,6 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #include "keys.h"
+#include "i18n.h"
+
+#include <stdio.h>
 
 #include <string.h>
 
@@ -48,6 +51,7 @@ static const ActionInfo ACTIONS[KA_COUNT] = {
     [KA_SHORTCUTS] = { "Shortcuts", "Keyboard shortcuts", KG_PROGRAM, false, "<Primary>question" },
 };
 
+static const char* GROUP_IDS[KG_COUNT] = { "keygroup.qso", "keygroup.fields", "keygroup.radio", "keygroup.program" };
 static const char* GROUP_TITLES[KG_COUNT] = { "QSO", "Fields", "Radio", "Program" };
 
 static KeyCombo combos[KA_COUNT][MAX_COMBOS];
@@ -159,9 +163,16 @@ bool keys_allowed(KeyCombo c)
 //------------------------------------------------------------------------------
 //                                 actions
 //------------------------------------------------------------------------------
-const char* keys_title(KeyAction a) { return ACTIONS[a].title; }
+// the translation ids are "key." + the INI key
+const char* keys_title(KeyAction a)
+{
+    char id[64];
+    snprintf(id, sizeof(id), "key.%s", ACTIONS[a].id);
+    return tr(id, ACTIONS[a].title);
+}
+
 KeyGroup keys_group(KeyAction a) { return ACTIONS[a].group; }
-const char* keys_group_title(KeyGroup g) { return GROUP_TITLES[g]; }
+const char* keys_group_title(KeyGroup g) { return tr(GROUP_IDS[g], GROUP_TITLES[g]); }
 bool keys_repeats(KeyAction a) { return ACTIONS[a].repeats; }
 
 int keys_count(KeyAction a)
@@ -178,7 +189,15 @@ KeyCombo keys_get(KeyAction a, int i)
 
 gchar* keys_label(KeyCombo c)
 {
-    return gtk_accelerator_get_label(c.key, c.mods);
+    gchar* label = gtk_accelerator_get_label(c.key, c.mods);
+    // the key is called Enter on the keyboards
+    if (c.key == GDK_KEY_Return && g_str_has_suffix(label, "Return")) {
+        label[strlen(label) - 6] = '\0';
+        gchar* enter = g_strconcat(label, "Enter", NULL);
+        g_free(label);
+        label = enter;
+    }
+    return label;
 }
 
 gchar* keys_labels(KeyAction a)

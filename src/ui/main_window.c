@@ -5,6 +5,7 @@
 #include "audio/audio_output.h"
 #include "config.h"
 #include "contest.h"
+#include "i18n.h"
 #include "keys.h"
 #include "theme.h"
 #include "widgets.h"
@@ -26,14 +27,25 @@ enum { COL_NR, COL_TIME, COL_CALL, COL_RECV, COL_SENT, COL_PFX, COL_CHK, COL_CHK
 
 // F1..F8 send these messages
 static const Msg FKEY_MSG[8] = { MSG_CQ, MSG_NR, MSG_TU, MSG_MY_CALL, MSG_HIS_CALL, MSG_B4, MSG_QM, MSG_NIL };
-static const char* FKEY_LABEL[8] = { "CQ", "NR", "TU", "My", "His", "B4", "?", "NIL" };
-static const char* FKEY_TIP[8] = {
-    "Call CQ", "Send the exchange", "Thank you (TU)", "Send my callsign",
-    "Send his callsign", "Worked before (QSO B4)", "Ask to repeat (?)", "Not in log (NIL)"
+typedef struct { const char* id; const char* text; } Text;   // see tr()
+static const Text FKEY_LABEL[8] = {
+    { "fkey.cq", "CQ" }, { "fkey.nr", "NR" }, { "fkey.tu", "TU" }, { "fkey.my", "My" },
+    { "fkey.his", "His" }, { "fkey.b4", "B4" }, { "fkey.qm", "?" }, { "fkey.nil", "NIL" },
+};
+static const Text FKEY_TIP[8] = {
+    { "fkey.cq_tip", "Call CQ" }, { "fkey.nr_tip", "Send the exchange" }, { "fkey.tu_tip", "Thank you (TU)" },
+    { "fkey.my_tip", "Send my callsign" }, { "fkey.his_tip", "Send his callsign" },
+    { "fkey.b4_tip", "Worked before (QSO B4)" }, { "fkey.qm_tip", "Ask to repeat (?)" },
+    { "fkey.nil_tip", "Not in log (NIL)" },
 };
 
 // the names of RM_PILEUP..RM_HST, in the order of the mode list
-static const char* MODE_NAMES[4] = { "Pile-Up", "Single Calls", "WPX Competition", "HST Competition" };
+static const Text MODE_NAMES[4] = {
+    { "mode.pileup", "Pile-Up" }, { "mode.single", "Single Calls" },
+    { "mode.wpx", "WPX Competition" }, { "mode.hst", "HST Competition" },
+};
+
+#define TR(t) tr((t).id, (t).text)
 
 struct App {
     Contest tst;
@@ -103,6 +115,7 @@ struct App {
     GtkWidget* sCallInfo;
     GtkWidget* sAddList;
     GtkWidget* sRemoveList;
+    GtkWidget* settingsButton;
     GSimpleAction* playAction;
 };
 
@@ -127,7 +140,7 @@ static void show_shortcuts(App* a);
 //------------------------------------------------------------------------------
 static const char* mode_name(RunMode m)
 {
-    return m == RM_STOP ? "Ready" : MODE_NAMES[m - RM_PILEUP];
+    return m == RM_STOP ? tr("state.ready", "Ready") : TR(MODE_NAMES[m - RM_PILEUP]);
 }
 
 static void format_time(double seconds, char* out, size_t size)
@@ -186,7 +199,7 @@ static GtkWidget* hz_combo(int from, int to)
     for (int f = from; f <= to; f += 50) {
         char id[16], text[32];
         snprintf(id, sizeof(id), "%d", f);
-        snprintf(text, sizeof(text), "%d Hz", f);
+        snprintf(text, sizeof(text), tr("unit.hz", "%d Hz"), f);
         gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(c), id, text);
     }
     return c;
@@ -543,21 +556,21 @@ static void popup_score_wpx(App* a)
     g_date_time_unref(now);
     append_line(path_score_file(), s);
 
-    GtkWidget* dlg = gtk_dialog_new_with_buttons("The contest is over", GTK_WINDOW(a->window),
+    GtkWidget* dlg = gtk_dialog_new_with_buttons(tr("dlg.contest_over", "The contest is over"), GTK_WINDOW(a->window),
                                                  GTK_DIALOG_MODAL | GTK_DIALOG_USE_HEADER_BAR,
-                                                 "Close", GTK_RESPONSE_CLOSE, NULL);
+                                                 tr("button.close", "Close"), GTK_RESPONSE_CLOSE, NULL);
     GtkWidget* area = gtk_dialog_get_content_area(GTK_DIALOG(dlg));
     gtk_box_set_spacing(GTK_BOX(area), 8);
     gtk_container_set_border_width(GTK_CONTAINER(area), 18);
     if (record) {
-        GtkWidget* l = gtk_label_new("Congratulations on a new record!");
+        GtkWidget* l = gtk_label_new(tr("score.record", "Congratulations on a new record!"));
         add_class(l, "mr-record");
         gtk_box_pack_start(GTK_BOX(area), l, FALSE, FALSE, 0);
     }
     char buf[128];
-    snprintf(buf, sizeof(buf), "%d QSO  ×  %d prefixes  =  %d points", st.verPts, st.verMul, st.verScore);
+    snprintf(buf, sizeof(buf), tr("score.wpx", "%d QSO  ×  %d prefixes  =  %d points"), st.verPts, st.verMul, st.verScore);
     gtk_box_pack_start(GTK_BOX(area), gtk_label_new(buf), FALSE, FALSE, 0);
-    GtkWidget* cap = make_caption("YOUR SCORE STRING");
+    GtkWidget* cap = make_caption(tr("score.string", "YOUR SCORE STRING"));
     gtk_widget_set_margin_top(cap, 8);
     gtk_box_pack_start(GTK_BOX(area), cap, FALSE, FALSE, 0);
     GtkWidget* entry = gtk_entry_new();
@@ -565,7 +578,7 @@ static void popup_score_wpx(App* a)
     gtk_editable_set_editable(GTK_EDITABLE(entry), FALSE);
     gtk_entry_set_width_chars(GTK_ENTRY(entry), (int)strlen(s) + 2);
     gtk_entry_set_icon_from_icon_name(GTK_ENTRY(entry), GTK_ENTRY_ICON_SECONDARY, "edit-copy-symbolic");
-    gtk_entry_set_icon_tooltip_text(GTK_ENTRY(entry), GTK_ENTRY_ICON_SECONDARY, "Copy");
+    gtk_entry_set_icon_tooltip_text(GTK_ENTRY(entry), GTK_ENTRY_ICON_SECONDARY, tr("score.copy", "Copy"));
     g_signal_connect(entry, "icon-press", G_CALLBACK(copy_icon_pressed), NULL);
     gtk_box_pack_start(GTK_BOX(area), entry, FALSE, FALSE, 0);
     gtk_widget_show_all(dlg);
@@ -591,8 +604,8 @@ static void popup_score_hst(App* a)
     append_line(path_hst_file(), buf);
 
     GtkWidget* dlg = gtk_message_dialog_new(GTK_WINDOW(a->window), GTK_DIALOG_MODAL, GTK_MESSAGE_INFO,
-                                            GTK_BUTTONS_CLOSE, "HST score: %d", st.verScore);
-    gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dlg), "%d QSOs logged, raw score %d.",
+                                            GTK_BUTTONS_CLOSE, tr("score.hst", "HST score: %d"), st.verScore);
+    gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dlg), tr("score.hst_details", "%d QSOs logged, raw score %d."),
                                              st.rawPts, st.rawScore);
     gtk_dialog_run(GTK_DIALOG(dlg));
     gtk_widget_destroy(dlg);
@@ -600,7 +613,7 @@ static void popup_score_hst(App* a)
 
 static void show_history(App* a)
 {
-    GtkWidget* dlg = gtk_dialog_new_with_buttons("Score History", GTK_WINDOW(a->window),
+    GtkWidget* dlg = gtk_dialog_new_with_buttons(tr("menu.history", "Score History"), GTK_WINDOW(a->window),
                                                  GTK_DIALOG_MODAL | GTK_DIALOG_USE_HEADER_BAR, NULL, NULL);
     gtk_window_set_default_size(GTK_WINDOW(dlg), 560, 380);
     GtkWidget* area = gtk_dialog_get_content_area(GTK_DIALOG(dlg));
@@ -617,7 +630,7 @@ static void show_history(App* a)
         gtk_text_view_set_left_margin(GTK_TEXT_VIEW(tv), 12);
         gtk_text_view_set_top_margin(GTK_TEXT_VIEW(tv), 8);
         gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(tv)),
-                                 content && content[0] ? content : "No results yet.\n", -1);
+                                 content && content[0] ? content : tr("history.empty", "No results yet.\n"), -1);
         g_free(content);
         GtkWidget* sw = gtk_scrolled_window_new(NULL, NULL);
         gtk_container_add(GTK_CONTAINER(sw), tv);
@@ -633,13 +646,19 @@ static void show_history(App* a)
     gtk_widget_destroy(dlg);
 }
 
+// the first key of an action for a hint, "" if it has none; g_free() it
+static gchar* first_key(KeyAction act)
+{
+    return keys_count(act) ? keys_label(keys_get(act, 0)) : g_strdup("");
+}
+
 // the keys shown on the F-key buttons, the Start tooltip and the menu
 static void update_key_hints(App* a)
 {
     for (int i = 0; i < 8; ++i) {
         KeyAction act = (KeyAction)(KA_CQ + i);
         gchar* key = keys_count(act) ? keys_label(keys_get(act, 0)) : g_strdup("");
-        gchar* markup = g_markup_printf_escaped("<span alpha=\"55%%\" size=\"small\">%s</span>  %s", key, FKEY_LABEL[i]);
+        gchar* markup = g_markup_printf_escaped("<span alpha=\"55%%\" size=\"small\">%s</span>  %s", key, TR(FKEY_LABEL[i]));
         gtk_label_set_markup(GTK_LABEL(gtk_bin_get_child(GTK_BIN(a->fkeys[i]))), markup);
         g_free(markup);
         g_free(key);
@@ -653,13 +672,41 @@ static void update_key_hints(App* a)
         gtk_application_set_accels_for_action(app, menu[i].name, (const char* const*)accels);
         g_strfreev(accels);
     }
-    update_controls(a);
-}
 
-// the first key of an action for a hint, "" if it has none; g_free() it
-static gchar* first_key(KeyAction act)
-{
-    return keys_count(act) ? keys_label(keys_get(act, 0)) : g_strdup("");
+    static const Text MODE_TIPS[4] = {
+        { "mode.pileup_tip", "Pile-Up: several stations answer each CQ" },
+        { "mode.single_tip", "Single Calls: one station at a time" },
+        { "mode.wpx_tip", "WPX: fixed band conditions, 60 minutes, scored" },
+        { "mode.hst_tip", "HST: IARU High Speed Telegraphy rules" },
+    };
+    GString* tip = g_string_new(NULL);
+    for (int i = 0; i < 4; ++i) {
+        gchar* key = first_key((KeyAction)(KA_MODE_PILEUP + i));
+        g_string_append_printf(tip, "%s%s  %s", i ? "\n" : "", key, TR(MODE_TIPS[i]));
+        g_free(key);
+    }
+    gtk_widget_set_tooltip_text(a->modeCombo, tip->str);
+    g_string_free(tip, TRUE);
+
+    gchar* speed = keys_labels(KA_SPEED_UP);
+    gchar* rit = keys_labels(KA_RIT_UP);
+    gchar* bw = keys_labels(KA_BW_UP);
+    gchar* rx = g_strdup_printf(tr("rx.keys_tip", "Speed +: %s    RIT +: %s    Bandwidth +: %s"), speed, rit, bw);
+    gtk_widget_set_tooltip_text(a->rxLabel, rx);
+    g_free(rx);
+    g_free(bw);
+    g_free(rit);
+    g_free(speed);
+
+    gchar* settings = first_key(KA_SETTINGS);
+    gchar* stip = g_strdup_printf(tr("settings.tip", "Settings  (%s)"), settings);
+    gtk_widget_set_tooltip_text(a->settingsButton, stip);
+    g_free(stip);
+    g_free(settings);
+
+    update_controls(a);
+    update_title(a);
+    show_placeholder(a);
 }
 
 typedef struct {
@@ -689,8 +736,8 @@ static void cb_key_button(GtkButton* b, gpointer data)
     KeyEditor* e = data;
     e->action = (KeyAction)GPOINTER_TO_INT(g_object_get_data(G_OBJECT(b), "action"));
     e->index = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(b), "index"));
-    gtk_button_set_label(b, "Press keys…");
-    gtk_label_set_text(GTK_LABEL(e->status), "Press the new key combination. Esc cancels, Backspace removes the key.");
+    gtk_button_set_label(b, tr("keys.press", "Press keys…"));
+    gtk_label_set_text(GTK_LABEL(e->status), tr("keys.capture", "Press the new key combination. Esc cancels, Backspace removes the key."));
 }
 
 static void cb_key_reset(GtkButton* b, gpointer data)
@@ -706,7 +753,7 @@ static void cb_keys_reset_all(GtkButton* b, gpointer data)
     (void)b;
     KeyEditor* e = data;
     keys_reset_all();
-    gtk_label_set_text(GTK_LABEL(e->status), "All the keys are the default ones again.");
+    gtk_label_set_text(GTK_LABEL(e->status), tr("keys.reset_all_done", "All the keys are the default ones again."));
     editor_changed(e);
 }
 
@@ -752,13 +799,13 @@ static void editor_fill(KeyEditor* e)
             if (keys_count(act) < MAX_COMBOS) {
                 GtkWidget* add = key_button(e, act, keys_count(act), "+");
                 add_class(add, "flat");
-                gtk_widget_set_tooltip_text(add, "Add a key");
+                gtk_widget_set_tooltip_text(add, tr("keys.add", "Add a key"));
                 gtk_container_add(GTK_CONTAINER(keys), add);
             }
             gtk_grid_attach(GTK_GRID(grid), keys, 1, r, 1, 1);
 
             GtkWidget* reset = gtk_button_new_from_icon_name("edit-undo-symbolic", GTK_ICON_SIZE_BUTTON);
-            gtk_widget_set_tooltip_text(reset, "Back to the default keys");
+            gtk_widget_set_tooltip_text(reset, tr("keys.reset", "Back to the default keys"));
             gtk_widget_set_valign(reset, GTK_ALIGN_CENTER);
             g_object_set_data(G_OBJECT(reset), "action", GINT_TO_POINTER(act));
             g_signal_connect(reset, "clicked", G_CALLBACK(cb_key_reset), e);
@@ -787,13 +834,13 @@ static gboolean cb_editor_key(GtkWidget* w, GdkEventKey* ev, gpointer data)
         KeyCombo c = keys_from_event(ev, gdk_keymap_get_for_display(gtk_widget_get_display(w)));
         gchar* label = keys_label(c);
         if (!keys_allowed(c)) {
-            gchar* msg = g_strdup_printf("%s types into the QSO fields and cannot be a shortcut.", label);
+            gchar* msg = g_strdup_printf(tr("keys.refused", "%s types into the QSO fields and cannot be a shortcut."), label);
             gtk_label_set_text(GTK_LABEL(e->status), msg);
             g_free(msg);
         } else {
             KeyAction owner = keys_set(act, e->index, c);
             gchar* msg = owner == KA_NONE ? g_strdup("")
-                                          : g_strdup_printf("%s is no longer used for “%s”.", label, keys_title(owner));
+                                          : g_strdup_printf(tr("keys.moved", "%s is no longer used for “%s”."), label, keys_title(owner));
             gtk_label_set_text(GTK_LABEL(e->status), msg);
             g_free(msg);
         }
@@ -806,12 +853,12 @@ static gboolean cb_editor_key(GtkWidget* w, GdkEventKey* ev, gpointer data)
 static void show_shortcuts(App* a)
 {
     KeyEditor e = { .app = a, .action = KA_NONE };
-    e.dialog = gtk_dialog_new_with_buttons("Keyboard Shortcuts", GTK_WINDOW(a->window),
+    e.dialog = gtk_dialog_new_with_buttons(tr("menu.shortcuts", "Keyboard Shortcuts"), GTK_WINDOW(a->window),
                                            GTK_DIALOG_MODAL | GTK_DIALOG_USE_HEADER_BAR, NULL, NULL);
     gtk_window_set_default_size(GTK_WINDOW(e.dialog), 760, 640);
     GtkWidget* area = gtk_dialog_get_content_area(GTK_DIALOG(e.dialog));
 
-    GtkWidget* hint = gtk_label_new("Click a key to change it, + to add one. The keys are saved at once.");
+    GtkWidget* hint = gtk_label_new(tr("keys.hint", "Click a key to change it, + to add one. The keys are saved at once."));
     add_class(hint, "mr-placeholder");
     gtk_widget_set_halign(hint, GTK_ALIGN_START);
     gtk_widget_set_margin_start(hint, 16);
@@ -831,7 +878,7 @@ static void show_shortcuts(App* a)
     gtk_label_set_xalign(GTK_LABEL(e.status), 0);
     gtk_label_set_line_wrap(GTK_LABEL(e.status), TRUE);
     gtk_box_pack_start(GTK_BOX(bottom), e.status, TRUE, TRUE, 0);
-    GtkWidget* resetAll = gtk_button_new_with_label("Reset All");
+    GtkWidget* resetAll = gtk_button_new_with_label(tr("keys.reset_all", "Reset All"));
     g_signal_connect(resetAll, "clicked", G_CALLBACK(cb_keys_reset_all), &e);
     gtk_box_pack_end(GTK_BOX(bottom), resetAll, FALSE, FALSE, 0);
     gtk_box_pack_end(GTK_BOX(area), bottom, FALSE, FALSE, 0);
@@ -850,9 +897,9 @@ static void show_about(App* a)
     gtk_show_about_dialog(GTK_WINDOW(a->window),
                           "program-name", "Morse Runner",
                           "version", MR_VERSION,
-                          "comments", "CW contest simulator.\n"
-                                      "Practice pile-ups, copying calls under QRM, QRN and QSB,\n"
-                                      "and contest operating at your own speed.",
+                          "comments", tr("about.comments", "CW contest simulator.\n"
+                                                          "Practice pile-ups, copying calls under QRM, QRN and QSB,\n"
+                                                          "and contest operating at your own speed."),
 #if GTK_CHECK_VERSION(3, 24, 20)
                           "license-type", GTK_LICENSE_MPL_2_0,
 #else
@@ -880,7 +927,7 @@ static void run(App* a, RunMode mode)
     UNLOCK(a);
     if (already) return;
     if (!started) {
-        show_error(a, "Please enter your callsign in the settings first.");
+        show_error(a, tr("run.no_call", "Please enter your callsign in the settings first."));
         gtk_popover_popup(GTK_POPOVER(a->settingsPopover));
         return;
     }
@@ -897,7 +944,7 @@ static void run(App* a, RunMode mode)
         LOCK(a);
         contest_stop(&a->tst, true);
         UNLOCK(a);
-        if (!a->audioError[0]) g_strlcpy(a->audioError, "Failed to start the audio output.", sizeof(a->audioError));
+        if (!a->audioError[0]) g_strlcpy(a->audioError, tr("audio.start_failed", "Failed to start the audio output."), sizeof(a->audioError));
     }
     if (a->audioError[0]) {
         show_error(a, a->audioError);
@@ -996,19 +1043,30 @@ static void show_placeholder(App* a)
         return;
     }
     RunMode mode = current_mode(a);
+    gchar* enter = first_key(KA_ESM);
+    gchar* text;
     if (mode == RM_STOP) {
-        set_label(a->placeholderTitle, "Ready");
-        set_label(a->placeholderText, "Choose a mode and press Enter or Start.\n"
-                                      "Press Ctrl+? to see the keyboard shortcuts.");
+        gchar* keys = first_key(KA_SHORTCUTS);
+        set_label(a->placeholderTitle, tr("state.ready", "Ready"));
+        text = g_strdup_printf(tr("placeholder.ready_text", "Choose a mode and press %s or Start.\n"
+                                                            "Press %s to see the keyboard shortcuts."), enter, keys);
+        g_free(keys);
     } else if (mode == RM_SINGLE || mode == RM_HST) {
-        set_label(a->placeholderTitle, "Stations are calling");
-        set_label(a->placeholderText, "Type the call you hear and press Enter.\n"
-                                      "Enter again logs the QSO once you have his number.");
+        set_label(a->placeholderTitle, tr("placeholder.calling", "Stations are calling"));
+        text = g_strdup_printf(tr("placeholder.calling_text", "Type the call you hear and press %s.\n"
+                                                              "%s again logs the QSO once you have his number."),
+                               enter, enter);
     } else {
-        set_label(a->placeholderTitle, "On the air");
-        set_label(a->placeholderText, "Press Enter or F1 to call CQ, then type a call you hear.\n"
-                                      "Enter sends the call and the exchange, the next Enter logs the QSO.");
+        gchar* cq = first_key(KA_CQ);
+        set_label(a->placeholderTitle, tr("placeholder.on_air", "On the air"));
+        text = g_strdup_printf(tr("placeholder.on_air_text", "Press %s or %s to call CQ, then type a call you hear.\n"
+                                                             "%s sends the call and the exchange, the next %s logs the QSO."),
+                               enter, cq, enter, enter);
+        g_free(cq);
     }
+    set_label(a->placeholderText, text);
+    g_free(text);
+    g_free(enter);
     gtk_stack_set_visible_child_name(GTK_STACK(a->logStack), "placeholder");
 }
 
@@ -1043,9 +1101,9 @@ static void update_dashboard(App* a)
     if (fabs(fraction - gtk_progress_bar_get_fraction(GTK_PROGRESS_BAR(a->progress))) > 1e-4)
         gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(a->progress), fraction);
 
-    if (mode == RM_STOP) snprintf(buf, sizeof(buf), "Stopped  ·  %d min session", duration);
-    else if (mode == RM_PILEUP) snprintf(buf, sizeof(buf), "%s  ·  %d calling", mode_name(mode), dx);
-    else snprintf(buf, sizeof(buf), "%s  ·  %d min", mode_name(mode), duration);
+    if (mode == RM_STOP) snprintf(buf, sizeof(buf), tr("dash.stopped", "Stopped  ·  %d min session"), duration);
+    else if (mode == RM_PILEUP) snprintf(buf, sizeof(buf), tr("dash.pileup", "%s  ·  %d calling"), mode_name(mode), dx);
+    else snprintf(buf, sizeof(buf), tr("dash.mode", "%s  ·  %d min"), mode_name(mode), duration);
     set_label(a->clockSub, buf);
     GtkStyleContext* ctx = gtk_widget_get_style_context(a->clockSub);
     if (run_mode_is_competition(mode)) gtk_style_context_add_class(ctx, "mr-compet");
@@ -1053,11 +1111,11 @@ static void update_dashboard(App* a)
 
     snprintf(buf, sizeof(buf), "%d", st.verScore);
     set_label(a->scoreLabel, buf);
-    if (last == RM_HST) snprintf(buf, sizeof(buf), "%d QSO  ·  raw score %d", st.rawPts, st.rawScore);
-    else snprintf(buf, sizeof(buf), "%d QSO × %d mult  ·  raw %d", st.verPts, st.verMul, st.rawScore);
+    if (last == RM_HST) snprintf(buf, sizeof(buf), tr("dash.hst", "%d QSO  ·  raw score %d"), st.rawPts, st.rawScore);
+    else snprintf(buf, sizeof(buf), tr("dash.wpx", "%d QSO × %d mult  ·  raw %d"), st.verPts, st.verMul, st.rawScore);
     set_label(a->scoreSub, buf);
 
-    snprintf(buf, sizeof(buf), "%d Q/hr", rate);
+    snprintf(buf, sizeof(buf), tr("dash.rate", "%d Q/hr"), rate);
     set_label(a->rateLabel, buf);
 
     if (logChanged) gtk_widget_queue_draw(a->histo);
@@ -1071,8 +1129,8 @@ static void update_receiver(App* a)
     bool qsk = a->tst.cfg.qsk;
     UNLOCK(a);
     char buf[160];
-    snprintf(buf, sizeof(buf), "%d WPM  ·  %d Hz  ·  BW %d  ·  RIT %+d%s", wpm, pitch, bw, rit,
-             qsk ? "  ·  QSK" : "");
+    snprintf(buf, sizeof(buf), tr("rx.status", "%d WPM  ·  %d Hz  ·  BW %d  ·  RIT %+d%s"), wpm, pitch, bw, rit,
+             qsk ? tr("rx.qsk", "  ·  QSK") : "");
     if (set_label(a->rxLabel, buf)) gtk_widget_queue_draw(a->ritView);
 }
 
@@ -1080,9 +1138,12 @@ static void update_title(App* a)
 {
     LOCK(a);
     const char* name = a->tst.cfg.operatorName;
-    gchar* sub = g_strdup_printf("%s%s%s", a->tst.cfg.call[0] ? a->tst.cfg.call : "No callsign: Ctrl+, to set it",
-                                 name[0] ? "  ·  " : "", name);
+    gchar* keys = first_key(KA_SETTINGS);
+    gchar* noCall = g_strdup_printf(tr("title.no_call", "No callsign: %s to set it"), keys);
+    gchar* sub = g_strdup_printf("%s%s%s", a->tst.cfg.call[0] ? a->tst.cfg.call : noCall, name[0] ? "  ·  " : "", name);
     UNLOCK(a);
+    g_free(noCall);
+    g_free(keys);
     gtk_header_bar_set_subtitle(GTK_HEADER_BAR(a->header), sub);
     g_free(sub);
 }
@@ -1114,7 +1175,7 @@ static void update_controls(App* a)
                        gtk_image_new_from_icon_name(stop ? "media-playback-start-symbolic"
                                                          : "media-playback-stop-symbolic", GTK_ICON_SIZE_BUTTON),
                        FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(label), gtk_label_new(stop ? "Start" : "Stop"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(label), gtk_label_new(stop ? tr("button.start", "Start") : tr("button.stop", "Stop")), FALSE, FALSE, 0);
     GtkWidget* old = gtk_bin_get_child(GTK_BIN(a->runButton));
     if (old) gtk_widget_destroy(old);
     gtk_container_add(GTK_CONTAINER(a->runButton), label);
@@ -1122,8 +1183,8 @@ static void update_controls(App* a)
     gchar* enter = first_key(KA_ESM);
     gchar* start = first_key(KA_START);
     gchar* runStop = first_key(KA_RUN_STOP);
-    gchar* tip = stop ? g_strdup_printf("Start the contest  (%s, %s, %s)", enter, start, runStop)
-                      : g_strdup_printf("Stop  (%s)", runStop);
+    gchar* tip = stop ? g_strdup_printf(tr("tip.start", "Start the contest  (%s, %s, %s)"), enter, start, runStop)
+                      : g_strdup_printf(tr("tip.stop", "Stop  (%s)"), runStop);
     gtk_widget_set_tooltip_text(a->runButton, tip);
     g_free(tip);
     g_free(enter);
@@ -1351,7 +1412,7 @@ static void cb_monitor_changed(GtkRange* r, gpointer data)
 static gchar* cb_monitor_format(GtkScale* s, gdouble value, gpointer data)
 {
     (void)s; (void)data;
-    return g_strdup_printf("%+d dB", (int)lround(value));
+    return g_strdup_printf(tr("unit.db", "%+d dB"), (int)lround(value));
 }
 
 static void cb_setting_changed(GtkWidget* w, gpointer data)
@@ -1456,6 +1517,26 @@ static void cb_action(GSimpleAction* action, GVariant* param, gpointer data)
     else if (!strcmp(name, "settings")) gtk_popover_popup(GTK_POPOVER(a->settingsPopover));
 }
 
+static void cb_language_changed(GSimpleAction* action, GVariant* value, gpointer data)
+{
+    App* a = data;
+    const char* code = g_variant_get_string(value, NULL);
+    g_simple_action_set_state(action, value);
+    LOCK(a);
+    bool changed = strcmp(a->tst.cfg.language, code) != 0;
+    g_strlcpy(a->tst.cfg.language, code, sizeof(a->tst.cfg.language));
+    Settings cfg = a->tst.cfg;
+    UNLOCK(a);
+    if (!changed) return;
+    save_settings(&cfg);
+    // all the texts are set when the window is built
+    GtkWidget* dlg = gtk_message_dialog_new(GTK_WINDOW(a->window), GTK_DIALOG_MODAL, GTK_MESSAGE_INFO,
+                                            GTK_BUTTONS_OK, "%s",
+                                            tr("language.restart", "The language changes when Morse Runner is started again."));
+    gtk_dialog_run(GTK_DIALOG(dlg));
+    gtk_widget_destroy(dlg);
+}
+
 static void cb_theme_changed(GSimpleAction* action, GVariant* value, gpointer data)
 {
     App* a = data;
@@ -1491,8 +1572,8 @@ static void update_call_info(App* a)
     int n = (int)a->tst.calls.all->len;
     UNLOCK(a);
     char buf[64];
-    if (n) snprintf(buf, sizeof(buf), "%d calls", n);
-    else g_strlcpy(buf, "Random calls built from contest prefixes", sizeof(buf));
+    if (n) snprintf(buf, sizeof(buf), tr("calls.count", "%d calls"), n);
+    else g_strlcpy(buf, tr("calls.generated_info", "Random calls built from contest prefixes"), sizeof(buf));
     gtk_label_set_text(GTK_LABEL(a->sCallInfo), buf);
 }
 
@@ -1502,7 +1583,7 @@ static void refresh_call_lists(App* a)
     a->updating = true;
     GtkComboBoxText* c = GTK_COMBO_BOX_TEXT(a->sCallList);
     gtk_combo_box_text_remove_all(c);
-    gtk_combo_box_text_append(c, "", "Generated calls");
+    gtk_combo_box_text_append(c, "", tr("calls.generated", "Generated calls"));
     gchar** names = call_list_names();
     for (gchar** n = names; *n; ++n) gtk_combo_box_text_append(c, *n, *n);
     g_strfreev(names);
@@ -1518,7 +1599,7 @@ static void use_call_list(App* a, const char* name, bool report)
     gchar* path = call_list_path(name);
     if (name[0] && (!path || !parse_call_list(&calls, path))) {
         if (report) {
-            gchar* msg = g_strdup_printf("No callsigns could be read from %s.", name);
+            gchar* msg = g_strdup_printf(tr("calls.unreadable", "No callsigns could be read from %s."), name);
             show_error(a, msg);
             g_free(msg);
         }
@@ -1555,7 +1636,7 @@ static bool ask(App* a, const char* question, const char* yes)
 {
     GtkWidget* dlg = gtk_message_dialog_new(GTK_WINDOW(a->window), GTK_DIALOG_MODAL, GTK_MESSAGE_QUESTION,
                                             GTK_BUTTONS_NONE, "%s", question);
-    gtk_dialog_add_buttons(GTK_DIALOG(dlg), "Cancel", GTK_RESPONSE_CANCEL, yes, GTK_RESPONSE_ACCEPT, NULL);
+    gtk_dialog_add_buttons(GTK_DIALOG(dlg), tr("button.cancel", "Cancel"), GTK_RESPONSE_CANCEL, yes, GTK_RESPONSE_ACCEPT, NULL);
     bool ok = gtk_dialog_run(GTK_DIALOG(dlg)) == GTK_RESPONSE_ACCEPT;
     gtk_widget_destroy(dlg);
     return ok;
@@ -1572,12 +1653,13 @@ static void add_call_list(App* a, const char* path)
     gsize size = 0;
     GError* err = NULL;
     if (!parse_call_list(&check, path)) {
-        gchar* msg = g_strdup_printf("%s is not a call list: no callsigns could be read from it.\n"
-                                     "Use a Super Check Partial file (.dta) or a text file with one call per line.", name);
+        gchar* msg = g_strdup_printf(tr("calls.not_a_list", "%s is not a call list: no callsigns could be read from it.\n"
+                                                            "Use a Super Check Partial file (.dta) or a text file "
+                                                            "with one call per line."), name);
         show_error(a, msg);
         g_free(msg);
     } else if (strcmp(path, dest) != 0 && g_file_test(dest, G_FILE_TEST_EXISTS) &&
-               !ask(a, "A call list with this name already exists. Replace it?", "Replace")) {
+               !ask(a, tr("calls.exists", "A call list with this name already exists. Replace it?"), tr("button.replace", "Replace"))) {
         // keep the old one
     } else if (strcmp(path, dest) != 0 && (!g_file_get_contents(path, &data, &size, &err) ||
                                            !g_file_set_contents(dest, data, (gssize)size, &err))) {
@@ -1597,10 +1679,10 @@ static void cb_add_list(GtkButton* b, gpointer data)
 {
     (void)b;
     App* a = data;
-    GtkFileChooserNative* fc = gtk_file_chooser_native_new("Add a Call List", GTK_WINDOW(a->window),
-                                                           GTK_FILE_CHOOSER_ACTION_OPEN, "Add", "Cancel");
+    GtkFileChooserNative* fc = gtk_file_chooser_native_new(tr("calls.add_title", "Add a Call List"), GTK_WINDOW(a->window),
+                                                           GTK_FILE_CHOOSER_ACTION_OPEN, tr("button.add", "Add"), tr("button.cancel", "Cancel"));
     GtkFileFilter* f = gtk_file_filter_new();
-    gtk_file_filter_set_name(f, "Call lists (*.dta, *.txt)");
+    gtk_file_filter_set_name(f, tr("calls.filter", "Call lists (*.dta, *.txt)"));
     const char* patterns[] = { "*.dta", "*.DTA", "*.txt", "*.TXT" };
     for (size_t i = 0; i < G_N_ELEMENTS(patterns); ++i) gtk_file_filter_add_pattern(f, patterns[i]);
     gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(fc), f);
@@ -1619,10 +1701,10 @@ static void cb_remove_list(GtkButton* b, gpointer data)
     char name[NAME_LEN];
     g_strlcpy(name, a->tst.cfg.callList, sizeof(name));
     gchar* path = call_list_path(name);
-    gchar* question = g_strdup_printf("Delete the call list %s?", name);
-    if (path && ask(a, question, "Delete")) {
+    gchar* question = g_strdup_printf(tr("calls.delete_question", "Delete the call list %s?"), name);
+    if (path && ask(a, question, tr("button.delete", "Delete"))) {
         if (g_remove(path) != 0) {
-            gchar* msg = g_strdup_printf("%s could not be deleted.", path);
+            gchar* msg = g_strdup_printf(tr("calls.delete_failed", "%s could not be deleted."), path);
             show_error(a, msg);
             g_free(msg);
         } else {
@@ -1652,70 +1734,70 @@ static GtkWidget* build_settings(App* a)
     gtk_grid_set_row_spacing(GTK_GRID(left), 8);
     gtk_grid_set_column_spacing(GTK_GRID(left), 16);
     int r = 0;
-    setting_header(left, r++, "STATION");
+    setting_header(left, r++, tr("settings.station", "STATION"));
     a->sCall = gtk_entry_new();
     gtk_entry_set_width_chars(GTK_ENTRY(a->sCall), 10);
     gtk_entry_set_max_length(GTK_ENTRY(a->sCall), MAX_CALL_CHARS);
     g_signal_connect(a->sCall, "insert-text", G_CALLBACK(cb_insert_text), a);
-    setting_row(left, r++, "Callsign", a->sCall);
+    setting_row(left, r++, tr("settings.call", "Callsign"), a->sCall);
     a->sName = gtk_entry_new();
     gtk_entry_set_width_chars(GTK_ENTRY(a->sName), 10);
     gtk_entry_set_max_length(GTK_ENTRY(a->sName), NAME_LEN - 1);
-    gtk_entry_set_placeholder_text(GTK_ENTRY(a->sName), "optional");
-    gtk_widget_set_tooltip_text(a->sName, "Written to the HST results");
-    setting_row(left, r++, "Operator", a->sName);
+    gtk_entry_set_placeholder_text(GTK_ENTRY(a->sName), tr("settings.optional", "optional"));
+    gtk_widget_set_tooltip_text(a->sName, tr("settings.operator_tip", "Written to the HST results"));
+    setting_row(left, r++, tr("settings.operator", "Operator"), a->sName);
     a->sWpm = gtk_spin_button_new_with_range(MIN_WPM, MAX_WPM, 1);
-    setting_row(left, r++, "Speed, WPM", a->sWpm);
+    setting_row(left, r++, tr("settings.wpm", "Speed, WPM"), a->sWpm);
     a->sPitch = hz_combo(MIN_PITCH, MAX_PITCH);
-    setting_row(left, r++, "Pitch", a->sPitch);
+    setting_row(left, r++, tr("settings.pitch", "Pitch"), a->sPitch);
     a->sBw = hz_combo(MIN_BANDWIDTH, MAX_BANDWIDTH);
-    setting_row(left, r++, "RX bandwidth", a->sBw);
+    setting_row(left, r++, tr("settings.bandwidth", "RX bandwidth"), a->sBw);
     a->sQsk = gtk_switch_new();
-    gtk_widget_set_tooltip_text(a->sQsk, "Hear the band between your own dits and dahs (full break-in)");
-    setting_row(left, r++, "QSK", a->sQsk);
-    setting_header(left, r++, "SESSION");
+    gtk_widget_set_tooltip_text(a->sQsk, tr("settings.qsk_tip", "Hear the band between your own dits and dahs (full break-in)"));
+    setting_row(left, r++, tr("settings.qsk", "QSK"), a->sQsk);
+    setting_header(left, r++, tr("settings.session", "SESSION"));
     a->sDuration = gtk_spin_button_new_with_range(MIN_DURATION, MAX_DURATION, 5);
-    gtk_widget_set_tooltip_text(a->sDuration, "Pile-Up and Single Calls modes. WPX and HST use the "
-                                              "competition duration (60 min).");
-    setting_row(left, r++, "Duration, min", a->sDuration);
+    gtk_widget_set_tooltip_text(a->sDuration, tr("settings.duration_tip", "Pile-Up and Single Calls modes. WPX and HST "
+                                                                          "use the competition duration (60 min)."));
+    setting_row(left, r++, tr("settings.duration", "Duration, min"), a->sDuration);
     a->sSaveWav = gtk_switch_new();
-    gtk_widget_set_tooltip_text(a->sSaveWav, "Save the audio of the next run to MorseRunner.wav");
-    setting_row(left, r++, "Record audio", a->sSaveWav);
+    gtk_widget_set_tooltip_text(a->sSaveWav, tr("settings.record_tip", "Save the audio of the next run to MorseRunner.wav"));
+    setting_row(left, r++, tr("settings.record", "Record audio"), a->sSaveWav);
 
     GtkWidget* right = gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(right), 8);
     gtk_grid_set_column_spacing(GTK_GRID(right), 16);
     r = 0;
-    setting_header(right, r++, "BAND CONDITIONS");
+    setting_header(right, r++, tr("settings.band", "BAND CONDITIONS"));
     a->sActivity = gtk_spin_button_new_with_range(MIN_ACTIVITY, MAX_ACTIVITY, 1);
-    gtk_widget_set_tooltip_text(a->sActivity, "How many stations answer a CQ on average");
-    setting_row(right, r++, "Activity", a->sActivity);
-    a->sQrn = setting_row(right, r++, "QRN — static", gtk_switch_new());
-    a->sQrm = setting_row(right, r++, "QRM — interference", gtk_switch_new());
-    a->sQsb = setting_row(right, r++, "QSB — fading", gtk_switch_new());
-    a->sFlutter = setting_row(right, r++, "Flutter — auroral", gtk_switch_new());
-    a->sLids = setting_row(right, r++, "LIDs — sloppy operators", gtk_switch_new());
-    GtkWidget* note = gtk_label_new("Competition modes use fixed\nconditions while running.");
+    gtk_widget_set_tooltip_text(a->sActivity, tr("settings.activity_tip", "How many stations answer a CQ on average"));
+    setting_row(right, r++, tr("settings.activity", "Activity"), a->sActivity);
+    a->sQrn = setting_row(right, r++, tr("settings.qrn", "QRN — static"), gtk_switch_new());
+    a->sQrm = setting_row(right, r++, tr("settings.qrm", "QRM — interference"), gtk_switch_new());
+    a->sQsb = setting_row(right, r++, tr("settings.qsb", "QSB — fading"), gtk_switch_new());
+    a->sFlutter = setting_row(right, r++, tr("settings.flutter", "Flutter — auroral"), gtk_switch_new());
+    a->sLids = setting_row(right, r++, tr("settings.lids", "LIDs — sloppy operators"), gtk_switch_new());
+    GtkWidget* note = gtk_label_new(tr("settings.competition_note", "Competition modes use fixed\nconditions while running."));
     add_class(note, "mr-placeholder");
     gtk_widget_set_halign(note, GTK_ALIGN_START);
     gtk_widget_set_margin_top(note, 8);
     gtk_grid_attach(GTK_GRID(right), note, 0, r++, 2, 1);
 
-    setting_header(right, r++, "CALL LIST");
+    setting_header(right, r++, tr("settings.call_list", "CALL LIST"));
     a->sCallList = gtk_combo_box_text_new();
-    gtk_widget_set_tooltip_text(a->sCallList, "Where the calling stations take their callsigns from");
+    gtk_widget_set_tooltip_text(a->sCallList, tr("settings.call_list_tip", "Where the calling stations take their callsigns from"));
     gtk_grid_attach(GTK_GRID(right), a->sCallList, 0, r++, 2, 1);
     a->sCallInfo = gtk_label_new(NULL);
     add_class(a->sCallInfo, "mr-placeholder");
     gtk_widget_set_halign(a->sCallInfo, GTK_ALIGN_START);
     gtk_grid_attach(GTK_GRID(right), a->sCallInfo, 0, r++, 2, 1);
     GtkWidget* listButtons = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-    a->sAddList = gtk_button_new_with_label("Add…");
-    gtk_widget_set_tooltip_text(a->sAddList, "Copy a call list file into the program's calls folder");
-    a->sRemoveList = gtk_button_new_with_label("Remove");
-    gtk_widget_set_tooltip_text(a->sRemoveList, "Delete the selected call list file");
+    a->sAddList = gtk_button_new_with_label(tr("settings.add_list", "Add…"));
+    gtk_widget_set_tooltip_text(a->sAddList, tr("settings.add_list_tip", "Copy a call list file into the program's calls folder"));
+    a->sRemoveList = gtk_button_new_with_label(tr("settings.remove_list", "Remove"));
+    gtk_widget_set_tooltip_text(a->sRemoveList, tr("settings.remove_list_tip", "Delete the selected call list file"));
     GtkWidget* folder = gtk_button_new_from_icon_name("folder-open-symbolic", GTK_ICON_SIZE_BUTTON);
-    gtk_widget_set_tooltip_text(folder, "Open the calls folder");
+    gtk_widget_set_tooltip_text(folder, tr("settings.calls_folder_tip", "Open the calls folder"));
     gtk_box_pack_start(GTK_BOX(listButtons), a->sAddList, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(listButtons), a->sRemoveList, FALSE, FALSE, 0);
     gtk_box_pack_end(GTK_BOX(listButtons), folder, FALSE, FALSE, 0);
@@ -1746,12 +1828,8 @@ static void build_header(App* a)
 
     a->modeCombo = gtk_combo_box_text_new();
     for (int i = 0; i < 4; ++i)
-        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(a->modeCombo), MODE_NAMES[i]);
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(a->modeCombo), TR(MODE_NAMES[i]));
     gtk_combo_box_set_active(GTK_COMBO_BOX(a->modeCombo), a->tst.cfg.lastMode);
-    gtk_widget_set_tooltip_text(a->modeCombo, "Ctrl+1  Pile-Up: several stations answer each CQ\n"
-                                              "Ctrl+2  Single Calls: one station at a time\n"
-                                              "Ctrl+3  WPX: fixed band conditions, 60 minutes, scored\n"
-                                              "Ctrl+4  HST: IARU High Speed Telegraphy rules");
     gtk_widget_set_can_focus(a->modeCombo, FALSE);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(a->header), a->modeCombo);
 
@@ -1763,19 +1841,32 @@ static void build_header(App* a)
     // main menu
     GMenu* menu = g_menu_new();
     GMenu* s1 = g_menu_new();
-    g_menu_append(s1, "Score History", "win.history");
-    g_menu_append(s1, "Play Recording", "win.play");
-    g_menu_append(s1, "Open Data Folder", "win.folder");
+    g_menu_append(s1, tr("menu.history", "Score History"), "win.history");
+    g_menu_append(s1, tr("menu.play", "Play Recording"), "win.play");
+    g_menu_append(s1, tr("menu.folder", "Open Data Folder"), "win.folder");
     g_menu_append_section(menu, NULL, G_MENU_MODEL(s1));
     GMenu* s2 = g_menu_new();
     GMenu* themes = g_menu_new();
-    g_menu_append(themes, "As in the System", "win.theme::system");
-    g_menu_append(themes, "Light", "win.theme::light");
-    g_menu_append(themes, "Dark", "win.theme::dark");
-    g_menu_append_submenu(s2, "Theme", G_MENU_MODEL(themes));
+    g_menu_append(themes, tr("menu.theme_system", "As in the System"), "win.theme::system");
+    g_menu_append(themes, tr("menu.theme_light", "Light"), "win.theme::light");
+    g_menu_append(themes, tr("menu.theme_dark", "Dark"), "win.theme::dark");
+    g_menu_append_submenu(s2, tr("menu.theme", "Theme"), G_MENU_MODEL(themes));
     g_object_unref(themes);
-    g_menu_append(s2, "Keyboard Shortcuts", "win.shortcuts");
-    g_menu_append(s2, "About Morse Runner", "win.about");
+    // the languages: English and the translation files found
+    GMenu* languages = g_menu_new();
+    g_menu_append(languages, tr("menu.language_system", "As in the System"), "win.language::");
+    GPtrArray* found = i18n_languages();
+    for (guint i = 0; i < found->len; ++i) {
+        const Language* l = g_ptr_array_index(found, i);
+        gchar* action = g_strdup_printf("win.language::%s", l->code);
+        g_menu_append(languages, l->name, action);
+        g_free(action);
+    }
+    g_ptr_array_unref(found);
+    g_menu_append_submenu(s2, tr("menu.language", "Language"), G_MENU_MODEL(languages));
+    g_object_unref(languages);
+    g_menu_append(s2, tr("menu.shortcuts", "Keyboard Shortcuts"), "win.shortcuts");
+    g_menu_append(s2, tr("menu.about", "About Morse Runner"), "win.about");
     g_menu_append_section(menu, NULL, G_MENU_MODEL(s2));
 
     GtkWidget* menuButton = gtk_menu_button_new();
@@ -1790,8 +1881,8 @@ static void build_header(App* a)
 
     // settings
     GtkWidget* settingsButton = gtk_menu_button_new();
+    a->settingsButton = settingsButton;
     gtk_widget_set_can_focus(settingsButton, FALSE);
-    gtk_widget_set_tooltip_text(settingsButton, "Settings  (Ctrl+,)");
     gtk_button_set_image(GTK_BUTTON(settingsButton),
                          gtk_image_new_from_icon_name("emblem-system-symbolic", GTK_ICON_SIZE_BUTTON));
     a->settingsPopover = gtk_popover_new(settingsButton);
@@ -1814,6 +1905,11 @@ static void build_actions(App* a)
         if (!strcmp(names[i], "play")) a->playAction = act;
         g_object_unref(act);
     }
+    GSimpleAction* language = g_simple_action_new_stateful("language", G_VARIANT_TYPE_STRING,
+                                                           g_variant_new_string(a->tst.cfg.language));
+    g_signal_connect(language, "change-state", G_CALLBACK(cb_language_changed), a);
+    g_action_map_add_action(G_ACTION_MAP(a->window), G_ACTION(language));
+    g_object_unref(language);
     GSimpleAction* theme = g_simple_action_new_stateful("theme", G_VARIANT_TYPE_STRING,
                                                         g_variant_new_string(theme_mode_id((ThemeMode)a->tst.cfg.theme)));
     g_signal_connect(theme, "change-state", G_CALLBACK(cb_theme_changed), a);
@@ -1838,7 +1934,7 @@ static GtkWidget* build_dashboard(App* a)
 
     // time
     GtkWidget* t = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
-    gtk_box_pack_start(GTK_BOX(t), make_caption("TIME"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(t), make_caption(tr("dash.time", "TIME")), FALSE, FALSE, 0);
     a->clockLabel = value_label("00:00:00", NULL);
     gtk_box_pack_start(GTK_BOX(t), a->clockLabel, FALSE, FALSE, 0);
     a->progress = gtk_progress_bar_new();
@@ -1853,8 +1949,8 @@ static GtkWidget* build_dashboard(App* a)
 
     // score
     GtkWidget* s = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
-    gtk_box_pack_start(GTK_BOX(s), make_caption("SCORE"), FALSE, FALSE, 0);
-    a->scoreLabel = value_label("0", "Verified score: only the QSOs confirmed by the other station");
+    gtk_box_pack_start(GTK_BOX(s), make_caption(tr("dash.score", "SCORE")), FALSE, FALSE, 0);
+    a->scoreLabel = value_label("0", tr("dash.score_tip", "Verified score: only the QSOs confirmed by the other station"));
     gtk_box_pack_start(GTK_BOX(s), a->scoreLabel, FALSE, FALSE, 0);
     a->scoreSub = gtk_label_new("");
     gtk_widget_set_halign(a->scoreSub, GTK_ALIGN_START);
@@ -1864,12 +1960,12 @@ static GtkWidget* build_dashboard(App* a)
 
     // rate
     GtkWidget* r = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
-    gtk_box_pack_start(GTK_BOX(r), make_caption("RATE"), FALSE, FALSE, 0);
-    a->rateLabel = value_label("0 Q/hr", "QSO rate over the last 5 minutes");
+    gtk_box_pack_start(GTK_BOX(r), make_caption(tr("dash.rate_caption", "RATE")), FALSE, FALSE, 0);
+    a->rateLabel = value_label("0 Q/hr", tr("dash.rate_tip", "QSO rate over the last 5 minutes"));
     gtk_box_pack_start(GTK_BOX(r), a->rateLabel, FALSE, FALSE, 0);
     a->histo = gtk_drawing_area_new();
     gtk_widget_set_size_request(a->histo, -1, 30);
-    gtk_widget_set_tooltip_text(a->histo, "QSOs in 5-minute intervals");
+    gtk_widget_set_tooltip_text(a->histo, tr("dash.histogram_tip", "QSOs in 5-minute intervals"));
     g_signal_connect(a->histo, "draw", G_CALLBACK(cb_histo_draw), a);
     gtk_box_pack_start(GTK_BOX(r), a->histo, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(row), card(r), TRUE, TRUE, 0);
@@ -1902,15 +1998,16 @@ static GtkWidget* build_log(App* a)
     gtk_widget_set_can_focus(a->logView, FALSE);
     gtk_tree_view_set_enable_search(GTK_TREE_VIEW(a->logView), FALSE);
 
-    static const struct { const char* title; int col; float xalign; bool expand; } cols[] = {
-        { "#", COL_NR, 1.f, false }, { "Time", COL_TIME, 0.f, false }, { "Call", COL_CALL, 0.f, true },
-        { "Recv", COL_RECV, 0.f, false }, { "Sent", COL_SENT, 0.f, false }, { "Pfx", COL_PFX, 0.f, false },
-        { "Check", COL_CHK, 0.f, false },
+    static const struct { Text title; int col; float xalign; bool expand; } cols[] = {
+        { { "log.nr", "#" }, COL_NR, 1.f, false }, { { "log.time", "Time" }, COL_TIME, 0.f, false },
+        { { "log.call", "Call" }, COL_CALL, 0.f, true }, { { "log.recv", "Recv" }, COL_RECV, 0.f, false },
+        { { "log.sent", "Sent" }, COL_SENT, 0.f, false }, { { "log.pfx", "Pfx" }, COL_PFX, 0.f, false },
+        { { "log.check", "Check" }, COL_CHK, 0.f, false },
     };
     for (size_t i = 0; i < sizeof(cols) / sizeof(cols[0]); ++i) {
         GtkCellRenderer* cell = gtk_cell_renderer_text_new();
         g_object_set(cell, "xalign", cols[i].xalign, "xpad", 8, "ypad", 2, NULL);
-        GtkTreeViewColumn* c = gtk_tree_view_column_new_with_attributes(cols[i].title, cell, "text", cols[i].col, NULL);
+        GtkTreeViewColumn* c = gtk_tree_view_column_new_with_attributes(TR(cols[i].title), cell, "text", cols[i].col, NULL);
         if (cols[i].col == COL_CHK) {
             gtk_tree_view_column_add_attribute(c, cell, "foreground", COL_CHK_COLOR);
             g_object_set(cell, "weight", PANGO_WEIGHT_BOLD, NULL);
@@ -1942,7 +2039,7 @@ static GtkWidget* build_entry(App* a)
     a->rstEntry = gtk_entry_new();
     a->nrEntry = gtk_entry_new();
     GtkWidget* entries[3] = { a->callEntry, a->rstEntry, a->nrEntry };
-    const char* labels[3] = { "CALL", "RST", "NR" };
+    const Text labels[3] = { { "entry.call", "CALL" }, { "entry.rst", "RST" }, { "entry.nr", "NR" } };
     const int maxLen[3] = { MAX_CALL_CHARS, 3, 6 };
     const int width[3] = { 12, 3, 5 };
     for (int i = 0; i < 3; ++i) {
@@ -1952,13 +2049,13 @@ static GtkWidget* build_entry(App* a)
         gtk_entry_set_width_chars(GTK_ENTRY(e), width[i]);
         g_signal_connect(e, "insert-text", G_CALLBACK(cb_insert_text), a);
         g_signal_connect_after(e, "grab-focus", G_CALLBACK(cb_grab_focus), a);
-        gtk_grid_attach(GTK_GRID(grid), make_caption(labels[i]), i, 0, 1, 1);
+        gtk_grid_attach(GTK_GRID(grid), make_caption(TR(labels[i])), i, 0, 1, 1);
         gtk_grid_attach(GTK_GRID(grid), e, i, 1, 1, 1);
     }
     gtk_widget_set_hexpand(a->callEntry, TRUE);
     gtk_entry_set_input_purpose(GTK_ENTRY(a->rstEntry), GTK_INPUT_PURPOSE_DIGITS);
     gtk_entry_set_input_purpose(GTK_ENTRY(a->nrEntry), GTK_INPUT_PURPOSE_DIGITS);
-    gtk_widget_set_tooltip_text(a->callEntry, "The call you hear. '?' marks a character you did not copy.");
+    gtk_widget_set_tooltip_text(a->callEntry, tr("entry.call_tip", "The call you hear. '?' marks a character you did not copy."));
     g_signal_connect(a->callEntry, "changed", G_CALLBACK(cb_call_changed), a);
     return grid;
 }
@@ -1972,7 +2069,7 @@ static GtkWidget* build_keys(App* a)
         GtkWidget* b = gtk_button_new();
         gtk_container_add(GTK_CONTAINER(b), label);
         gtk_widget_set_can_focus(b, FALSE);
-        gtk_widget_set_tooltip_text(b, FKEY_TIP[i]);
+        gtk_widget_set_tooltip_text(b, TR(FKEY_TIP[i]));
         add_class(b, "mr-fkey");
         g_object_set_data(G_OBJECT(b), "fkey", GINT_TO_POINTER(i));
         g_signal_connect(b, "clicked", G_CALLBACK(cb_fkey), a);
@@ -1988,7 +2085,6 @@ static GtkWidget* build_receiver(App* a)
 
     a->rxLabel = gtk_label_new("");
     add_class(a->rxLabel, "mr-rx");
-    gtk_widget_set_tooltip_text(a->rxLabel, "PgUp/PgDn: speed    Up/Down: RIT    Ctrl+Up/Down: bandwidth");
     gtk_box_pack_start(GTK_BOX(row), a->rxLabel, FALSE, FALSE, 0);
 
     a->ritView = gtk_drawing_area_new();
@@ -1996,21 +2092,21 @@ static GtkWidget* build_receiver(App* a)
     gtk_widget_set_valign(a->ritView, GTK_ALIGN_CENTER);
     gtk_widget_set_hexpand(a->ritView, TRUE);
     gtk_widget_add_events(a->ritView, GDK_BUTTON_PRESS_MASK | GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK);
-    gtk_widget_set_tooltip_text(a->ritView, "Receiver passband. Click left/right to tune the RIT, click the band to reset.");
+    gtk_widget_set_tooltip_text(a->ritView, tr("rx.passband_tip", "Receiver passband. Click left/right to tune the RIT, click the band to reset."));
     g_signal_connect(a->ritView, "draw", G_CALLBACK(cb_rit_draw), a);
     g_signal_connect(a->ritView, "button-press-event", G_CALLBACK(cb_rit_press), a);
     g_signal_connect(a->ritView, "scroll-event", G_CALLBACK(cb_rit_scroll), a);
     gtk_box_pack_start(GTK_BOX(row), a->ritView, TRUE, TRUE, 0);
 
     GtkWidget* icon = gtk_image_new_from_icon_name("audio-volume-medium-symbolic", GTK_ICON_SIZE_BUTTON);
-    gtk_widget_set_tooltip_text(icon, "Self-monitor level");
+    gtk_widget_set_tooltip_text(icon, tr("rx.monitor_tip", "Self-monitor level"));
     gtk_box_pack_start(GTK_BOX(row), icon, FALSE, FALSE, 0);
     a->monitorScale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, MIN_MONITOR_DB, MAX_MONITOR_DB, 1);
     gtk_widget_set_size_request(a->monitorScale, 130, -1);
     gtk_widget_set_can_focus(a->monitorScale, FALSE);
     gtk_scale_set_value_pos(GTK_SCALE(a->monitorScale), GTK_POS_RIGHT);
     gtk_scale_add_mark(GTK_SCALE(a->monitorScale), 0, GTK_POS_BOTTOM, NULL);
-    gtk_widget_set_tooltip_text(a->monitorScale, "Self-monitor level");
+    gtk_widget_set_tooltip_text(a->monitorScale, tr("rx.monitor_tip", "Self-monitor level"));
     g_signal_connect(a->monitorScale, "format-value", G_CALLBACK(cb_monitor_format), NULL);
     g_signal_connect(a->monitorScale, "value-changed", G_CALLBACK(cb_monitor_changed), a);
     gtk_box_pack_start(GTK_BOX(row), a->monitorScale, FALSE, FALSE, 0);
@@ -2024,6 +2120,7 @@ App* app_new(GtkApplication* gtkApp)
     g_mutex_init(&a->lock);
     contest_init(&a->tst);
     load_settings(&a->tst.cfg);
+    i18n_init(a->tst.cfg.language);
     contest_set_my_call(&a->tst, a->tst.cfg.call);
     contest_set_wpm(&a->tst, a->tst.cfg.wpm);
     contest_apply_bandwidth(&a->tst);
@@ -2074,9 +2171,9 @@ App* app_new(GtkApplication* gtkApp)
     bool silent = false;
     a->audio = audio_open(SAMPLE_RATE, a->tst.cfg.bufSize, fill_audio, a, &silent);
     if (!a->audio)
-        g_strlcpy(a->audioError, "Failed to initialize the audio output.", sizeof(a->audioError));
+        g_strlcpy(a->audioError, tr("audio.init_failed", "Failed to initialize the audio output."), sizeof(a->audioError));
     else if (silent)
-        g_strlcpy(a->audioError, "No audio output device is available, the simulation runs silently.",
+        g_strlcpy(a->audioError, tr("audio.silent", "No audio output device is available, the simulation runs silently."),
                   sizeof(a->audioError));
 
     a->timer = g_timeout_add(50, cb_timer, a);
