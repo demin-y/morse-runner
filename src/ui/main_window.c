@@ -180,8 +180,11 @@ static GtkWidget* setting_row(GtkWidget* grid, int row, const char* text, GtkWid
     GtkWidget* l = gtk_label_new(text);
     gtk_widget_set_halign(l, GTK_ALIGN_START);
     gtk_widget_set_hexpand(l, TRUE);
+    label_wrap(l, 22);
+    gtk_label_set_xalign(GTK_LABEL(l), 0);
     gtk_grid_attach(GTK_GRID(grid), l, 0, row, 1, 1);
     gtk_widget_set_halign(w, GTK_ALIGN_END);
+    gtk_widget_set_valign(w, GTK_ALIGN_CENTER);   // the label may take several lines
     gtk_grid_attach(GTK_GRID(grid), w, 1, row, 1, 1);
     return w;
 }
@@ -190,12 +193,14 @@ static void setting_header(GtkWidget* grid, int row, const char* text)
 {
     GtkWidget* l = make_caption(text);
     add_class(l, "mr-settings-header");
+    gtk_label_set_max_width_chars(GTK_LABEL(l), 30);
     gtk_grid_attach(GTK_GRID(grid), l, 0, row, 2, 1);
 }
 
 static GtkWidget* hz_combo(int from, int to)
 {
     GtkWidget* c = gtk_combo_box_text_new();
+    combo_shrink(c, 7);
     for (int f = from; f <= to; f += 50) {
         char id[16], text[32];
         snprintf(id, sizeof(id), "%d", f);
@@ -784,8 +789,7 @@ static void editor_fill(KeyEditor* e)
             if (keys_group(act) != (KeyGroup)g) continue;
             GtkWidget* title = gtk_label_new(keys_title(act));
             gtk_label_set_xalign(GTK_LABEL(title), 0);
-            gtk_label_set_line_wrap(GTK_LABEL(title), TRUE);
-            gtk_label_set_max_width_chars(GTK_LABEL(title), 32);
+            label_wrap(title, 32);
             gtk_widget_set_hexpand(title, TRUE);
             gtk_grid_attach(GTK_GRID(grid), title, 0, r, 1, 1);
 
@@ -859,6 +863,8 @@ static void show_shortcuts(App* a)
     GtkWidget* area = gtk_dialog_get_content_area(GTK_DIALOG(e.dialog));
 
     GtkWidget* hint = gtk_label_new(tr("keys.hint", "Click a key to change it, + to add one. The keys are saved at once."));
+    label_wrap(hint, 90);
+    gtk_label_set_xalign(GTK_LABEL(hint), 0);
     add_class(hint, "mr-placeholder");
     gtk_widget_set_halign(hint, GTK_ALIGN_START);
     gtk_widget_set_margin_start(hint, 16);
@@ -1175,7 +1181,10 @@ static void update_controls(App* a)
                        gtk_image_new_from_icon_name(stop ? "media-playback-start-symbolic"
                                                          : "media-playback-stop-symbolic", GTK_ICON_SIZE_BUTTON),
                        FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(label), gtk_label_new(stop ? tr("button.start", "Start") : tr("button.stop", "Stop")), FALSE, FALSE, 0);
+    GtkWidget* text = gtk_label_new(stop ? tr("button.start", "Start") : tr("button.stop", "Stop"));
+    label_shrink(text);
+    gtk_label_set_max_width_chars(GTK_LABEL(text), 14);
+    gtk_box_pack_start(GTK_BOX(label), text, TRUE, TRUE, 0);
     GtkWidget* old = gtk_bin_get_child(GTK_BIN(a->runButton));
     if (old) gtk_widget_destroy(old);
     gtk_container_add(GTK_CONTAINER(a->runButton), label);
@@ -1778,6 +1787,7 @@ static GtkWidget* build_settings(App* a)
     a->sFlutter = setting_row(right, r++, tr("settings.flutter", "Flutter — auroral"), gtk_switch_new());
     a->sLids = setting_row(right, r++, tr("settings.lids", "LIDs — sloppy operators"), gtk_switch_new());
     GtkWidget* note = gtk_label_new(tr("settings.competition_note", "Competition modes use fixed\nconditions while running."));
+    label_wrap(note, 34);
     add_class(note, "mr-placeholder");
     gtk_widget_set_halign(note, GTK_ALIGN_START);
     gtk_widget_set_margin_top(note, 8);
@@ -1785,10 +1795,12 @@ static GtkWidget* build_settings(App* a)
 
     setting_header(right, r++, tr("settings.call_list", "CALL LIST"));
     a->sCallList = gtk_combo_box_text_new();
+    combo_shrink(a->sCallList, 24);
     gtk_widget_set_tooltip_text(a->sCallList, tr("settings.call_list_tip", "Where the calling stations take their callsigns from"));
     gtk_grid_attach(GTK_GRID(right), a->sCallList, 0, r++, 2, 1);
     a->sCallInfo = gtk_label_new(NULL);
     add_class(a->sCallInfo, "mr-placeholder");
+    label_shrink(a->sCallInfo);
     gtk_widget_set_halign(a->sCallInfo, GTK_ALIGN_START);
     gtk_grid_attach(GTK_GRID(right), a->sCallInfo, 0, r++, 2, 1);
     GtkWidget* listButtons = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
@@ -1798,8 +1810,13 @@ static GtkWidget* build_settings(App* a)
     gtk_widget_set_tooltip_text(a->sRemoveList, tr("settings.remove_list_tip", "Delete the selected call list file"));
     GtkWidget* folder = gtk_button_new_from_icon_name("folder-open-symbolic", GTK_ICON_SIZE_BUTTON);
     gtk_widget_set_tooltip_text(folder, tr("settings.calls_folder_tip", "Open the calls folder"));
-    gtk_box_pack_start(GTK_BOX(listButtons), a->sAddList, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(listButtons), a->sRemoveList, FALSE, FALSE, 0);
+    for (int i = 0; i < 2; ++i) {
+        GtkWidget* b = i ? a->sRemoveList : a->sAddList;
+        GtkWidget* text = gtk_bin_get_child(GTK_BIN(b));
+        label_shrink(text);
+        gtk_label_set_max_width_chars(GTK_LABEL(text), 12);
+        gtk_box_pack_start(GTK_BOX(listButtons), b, FALSE, FALSE, 0);
+    }
     gtk_box_pack_end(GTK_BOX(listButtons), folder, FALSE, FALSE, 0);
     gtk_grid_attach(GTK_GRID(right), listButtons, 0, r++, 2, 1);
     g_signal_connect(a->sCallList, "changed", G_CALLBACK(cb_call_list_changed), a);
@@ -1827,6 +1844,7 @@ static void build_header(App* a)
     gtk_header_bar_set_title(GTK_HEADER_BAR(a->header), "Morse Runner");
 
     a->modeCombo = gtk_combo_box_text_new();
+    combo_shrink(a->modeCombo, 16);
     for (int i = 0; i < 4; ++i)
         gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(a->modeCombo), TR(MODE_NAMES[i]));
     gtk_combo_box_set_active(GTK_COMBO_BOX(a->modeCombo), a->tst.cfg.lastMode);
@@ -1886,7 +1904,15 @@ static void build_header(App* a)
     gtk_button_set_image(GTK_BUTTON(settingsButton),
                          gtk_image_new_from_icon_name("emblem-system-symbolic", GTK_ICON_SIZE_BUTTON));
     a->settingsPopover = gtk_popover_new(settingsButton);
-    gtk_container_add(GTK_CONTAINER(a->settingsPopover), build_settings(a));
+    // long translations make the settings taller: they scroll then
+    GtkWidget* settingsScroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(settingsScroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_propagate_natural_width(GTK_SCROLLED_WINDOW(settingsScroll), TRUE);
+    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(settingsScroll), TRUE);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(settingsScroll), 560);
+    gtk_container_add(GTK_CONTAINER(settingsScroll), build_settings(a));
+    gtk_widget_show(settingsScroll);
+    gtk_container_add(GTK_CONTAINER(a->settingsPopover), settingsScroll);
     gtk_menu_button_set_popover(GTK_MENU_BUTTON(settingsButton), a->settingsPopover);
     g_signal_connect(a->settingsPopover, "closed", G_CALLBACK(cb_popover_closed), a);
     g_signal_connect(a->settingsPopover, "map", G_CALLBACK(cb_popover_shown), a);
@@ -1923,6 +1949,7 @@ static GtkWidget* value_label(const char* text, const char* tip)
     GtkWidget* l = gtk_label_new(text);
     gtk_widget_set_halign(l, GTK_ALIGN_START);
     add_class(l, "mr-value");
+    label_shrink(l);
     if (tip) gtk_widget_set_tooltip_text(l, tip);
     return l;
 }
@@ -1941,6 +1968,7 @@ static GtkWidget* build_dashboard(App* a)
     gtk_widget_set_margin_top(a->progress, 4);
     gtk_box_pack_start(GTK_BOX(t), a->progress, FALSE, FALSE, 0);
     a->clockSub = gtk_label_new("");
+    label_shrink(a->clockSub);
     gtk_widget_set_halign(a->clockSub, GTK_ALIGN_START);
     gtk_widget_set_margin_top(a->clockSub, 4);
     add_class(a->clockSub, "mr-mode");
@@ -1953,6 +1981,7 @@ static GtkWidget* build_dashboard(App* a)
     a->scoreLabel = value_label("0", tr("dash.score_tip", "Verified score: only the QSOs confirmed by the other station"));
     gtk_box_pack_start(GTK_BOX(s), a->scoreLabel, FALSE, FALSE, 0);
     a->scoreSub = gtk_label_new("");
+    label_shrink(a->scoreSub);
     gtk_widget_set_halign(a->scoreSub, GTK_ALIGN_START);
     add_class(a->scoreSub, "mr-subvalue");
     gtk_box_pack_start(GTK_BOX(s), a->scoreSub, FALSE, FALSE, 0);
@@ -1982,7 +2011,10 @@ static GtkWidget* build_log(App* a)
     gtk_widget_set_valign(ph, GTK_ALIGN_CENTER);
     a->placeholderTitle = gtk_label_new("");
     add_class(a->placeholderTitle, "mr-placeholder-title");
+    label_wrap(a->placeholderTitle, 40);
+    gtk_label_set_justify(GTK_LABEL(a->placeholderTitle), GTK_JUSTIFY_CENTER);
     a->placeholderText = gtk_label_new("");
+    label_wrap(a->placeholderText, 70);
     gtk_label_set_justify(GTK_LABEL(a->placeholderText), GTK_JUSTIFY_CENTER);
     add_class(a->placeholderText, "mr-placeholder");
     gtk_box_pack_start(GTK_BOX(ph), a->placeholderTitle, FALSE, FALSE, 0);
@@ -2007,7 +2039,16 @@ static GtkWidget* build_log(App* a)
     for (size_t i = 0; i < sizeof(cols) / sizeof(cols[0]); ++i) {
         GtkCellRenderer* cell = gtk_cell_renderer_text_new();
         g_object_set(cell, "xalign", cols[i].xalign, "xpad", 8, "ypad", 2, NULL);
-        GtkTreeViewColumn* c = gtk_tree_view_column_new_with_attributes(TR(cols[i].title), cell, "text", cols[i].col, NULL);
+        GtkTreeViewColumn* c = gtk_tree_view_column_new_with_attributes(NULL, cell, "text", cols[i].col, NULL);
+        // a long translated title must not widen the column
+        GtkWidget* title = gtk_label_new(TR(cols[i].title));
+        label_shrink(title);
+        const int limit = cols[i].expand ? 24 : 9;
+        gtk_label_set_width_chars(GTK_LABEL(title), MIN((int)g_utf8_strlen(TR(cols[i].title), -1), limit));
+        gtk_label_set_max_width_chars(GTK_LABEL(title), limit);
+        gtk_widget_set_tooltip_text(title, TR(cols[i].title));
+        gtk_widget_show(title);
+        gtk_tree_view_column_set_widget(c, title);
         if (cols[i].col == COL_CHK) {
             gtk_tree_view_column_add_attribute(c, cell, "foreground", COL_CHK_COLOR);
             g_object_set(cell, "weight", PANGO_WEIGHT_BOLD, NULL);
@@ -2066,6 +2107,7 @@ static GtkWidget* build_keys(App* a)
     gtk_box_set_homogeneous(GTK_BOX(row), TRUE);
     for (int i = 0; i < 8; ++i) {
         GtkWidget* label = gtk_label_new(NULL);   // the text: update_key_hints
+        label_shrink(label);
         GtkWidget* b = gtk_button_new();
         gtk_container_add(GTK_CONTAINER(b), label);
         gtk_widget_set_can_focus(b, FALSE);
@@ -2084,6 +2126,7 @@ static GtkWidget* build_receiver(App* a)
     GtkWidget* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
 
     a->rxLabel = gtk_label_new("");
+    label_shrink(a->rxLabel);
     add_class(a->rxLabel, "mr-rx");
     gtk_box_pack_start(GTK_BOX(row), a->rxLabel, FALSE, FALSE, 0);
 

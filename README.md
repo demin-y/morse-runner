@@ -182,7 +182,9 @@ A translation is a plain text file `lang/<code>.ini`. To add a language, copy
 after the `=` (keep `%s`, `%d` and the other `%` codes in their order) and put the file into
 the `lang` folder of the data folder (see below) — it appears in the menu. A text left out
 stays in English; deleting the file removes the language. `make lang-check` checks the
-translations in `lang/` against the texts of the program.
+translations in `lang/` against the texts of the program. Longer texts are fine: the window
+does not grow — short labels end with "…" (the full text is in the tooltip where it matters),
+longer ones wrap, and the settings scroll; still, the shorter the better.
 
 ## Files
 

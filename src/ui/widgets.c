@@ -174,7 +174,31 @@ void draw_rit(GtkWidget* w, cairo_t* cr, int bandwidth, int rit)
 GtkWidget* make_caption(const char* text)
 {
     GtkWidget* l = gtk_label_new(text);
-    gtk_widget_set_halign(l, GTK_ALIGN_START);
+    // the whole width, not the measured one: the CSS letter spacing is not measured
+    gtk_label_set_xalign(GTK_LABEL(l), 0);
     gtk_style_context_add_class(gtk_widget_get_style_context(l), "mr-caption");
+    label_shrink(l);
     return l;
+}
+
+void label_shrink(GtkWidget* label)
+{
+    gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_END);
+}
+
+void combo_shrink(GtkWidget* combo, int chars)
+{
+    GList* cells = gtk_cell_layout_get_cells(GTK_CELL_LAYOUT(combo));
+    for (GList* c = cells; c; c = c->next)
+        if (GTK_IS_CELL_RENDERER_TEXT(c->data))
+            g_object_set(c->data, "ellipsize", PANGO_ELLIPSIZE_END, "width-chars", chars, "max-width-chars", chars,
+                         NULL);
+    g_list_free(cells);
+}
+
+void label_wrap(GtkWidget* label, int maxChars)
+{
+    gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
+    gtk_label_set_line_wrap_mode(GTK_LABEL(label), PANGO_WRAP_WORD_CHAR);   // long words too
+    gtk_label_set_max_width_chars(GTK_LABEL(label), maxChars);
 }

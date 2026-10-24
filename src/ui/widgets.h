@@ -31,5 +31,11 @@ void draw_rit(GtkWidget* w, cairo_t* cr, int bandwidth, int rit);
 
 // a small upper case caption
 GtkWidget* make_caption(const char* text);
+// a translation may be much longer than the English text: a label either
+// shortens with "…" (one line) or wraps (several lines) instead of widening the window
+void label_shrink(GtkWidget* label);
+void label_wrap(GtkWidget* label, int maxChars);
+// the same for the text of a combo box: about `chars` characters, then "…"
+void combo_shrink(GtkWidget* combo, int chars);
 
 #endif
