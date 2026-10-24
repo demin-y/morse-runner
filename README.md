@@ -21,8 +21,10 @@ Plain C11 with a GTK 3 interface, built with a Makefile; runs on Linux, macOS an
 - **Live log checking.** Every QSO is checked against the other station's log: `✓`, or
   `NIL`, `DUP`, `RST`, `NR` for the errors. Verified score, multipliers, QSO rate and a rate
   histogram are updated as you go.
-- **Real or generated calls.** A Super Check Partial `Master.dta` or a plain text list, or
-  realistic random calls from a weighted table of active contest prefixes.
+- **Your own call lists.** Add any number of Super Check Partial `.dta` files or plain text
+  lists and pick one in the settings — for example, the calls of the championship you are
+  preparing for. Without a list, realistic random calls are built from a weighted table of
+  active contest prefixes.
 - **Receiver controls**: RIT with a passband indicator, 100–600 Hz receive bandwidth,
   300–900 Hz pitch, 10–120 WPM, QSK, self-monitoring level.
 - **Score history** of WPX and HST runs, an optional audio recording of the session.
@@ -51,6 +53,7 @@ Fedora: `sudo dnf install gcc make pkgconf gtk3-devel`, then `make`.
 
 `sudo make install` installs the program, a desktop entry and the icon into `/usr/local`
 (`make install PREFIX=/usr` for another prefix, `make uninstall` to remove).
+On macOS there is no `make install`: run `build/morserunner`.
 
 ### macOS
 
@@ -118,9 +121,10 @@ already sent is the same.
 | Tab / Shift+Tab | next / previous field |
 | Ctrl+W, Alt+W, F11 | clear the fields |
 | Up / Down | RIT ±50 Hz |
-| Ctrl+Up / Ctrl+Down | receiver bandwidth ±50 Hz |
-| PgUp / PgDn, Ctrl+F10 / Ctrl+F9 | speed ±5 WPM |
-| Enter, F9 (stopped) | start |
+| Ctrl+Up / Ctrl+Down, Alt+Up / Alt+Down | receiver bandwidth ±50 Hz |
+| PgUp / PgDn | speed ±5 WPM |
+| Enter, F9 (stopped) | start the mode chosen in the header |
+| Ctrl+F9 (stopped) | start the HST competition |
 | Ctrl+R | start / stop |
 | Ctrl+1 … Ctrl+4 | Pile-Up, Single Calls, WPX, HST |
 | Ctrl+, | settings (Esc returns to the QSO) |
@@ -129,6 +133,27 @@ already sent is the same.
 With a non-Latin layout (Russian, for example) the keys still work: the Latin character
 of the key is used. If the cursor has left the QSO fields, typing goes to the call field.
 
+On macOS, Ctrl+R, Ctrl+, and Ctrl+? are Cmd+R, Cmd+, and Cmd+?. The F-keys are media keys
+there unless you hold Fn (or turn on "Use F1, F2, etc. keys as standard function keys");
+everything also works without them: Enter, `;`, `.`, `\`. F11 shows the desktop on a Mac —
+use Ctrl+W to clear the fields; Ctrl+Up/Down belong to Mission Control — use Option+Up/Down.
+
+### Call lists
+
+The calling stations take their callsigns from the list chosen in the settings (**Call list**).
+A list is a Super Check Partial file (`.dta`, for example `Master.dta` from
+[supercheckpartial.com](https://www.supercheckpartial.com)) or a text file with one call
+per line (`#` and `;` start a comment).
+
+- **Add…** checks the file, copies it into the calls folder and selects it.
+- **Remove** deletes the selected list; the generated calls are used again.
+- The folder button opens the calls folder: files put there by hand appear in the list too.
+  On Windows, `.dta` files next to `morserunner.exe` are listed as well.
+
+To get used to the calls of a particular contest — say, the Russian HF Championship — add a
+list of its participants and run Pile-Up or Single Calls with it. In HST mode a call is not
+repeated within a run. The list can only be changed while the contest is stopped.
+
 ### Theme
 
 Menu → Theme: **As in the System** follows the desktop (GTK theme, `GTK_THEME`, GNOME dark
@@ -136,17 +161,21 @@ style, Windows and macOS dark mode); **Light** and **Dark** work whatever the de
 
 ## Files
 
-The settings are kept in `MorseRunner.ini` in the user config folder: `~/.config/MorseRunner`
-on Linux and macOS, `%LOCALAPPDATA%\MorseRunner` on Windows.
+| | Linux | macOS | Windows |
+|---|---|---|---|
+| settings | `~/.config/morserunner` | `~/Library/Application Support/morserunner` | `%LOCALAPPDATA%\morserunner` |
+| data | `~/.local/share/morserunner` | `~/Library/Application Support/morserunner` | `%LOCALAPPDATA%\morserunner` |
 
-The data folder (menu → Open Data Folder; `~/.local/share/MorseRunner` on Linux) holds:
+The settings are in `MorseRunner.ini`. The data folder (menu → Open Data Folder) holds:
 
 | File | |
 |---|---|
-| `Master.dta` or `calls.txt` | your call list: Super Check Partial file, or one call per line |
+| `calls/` | your call lists |
 | `ScoreList.txt` | WPX results: date, call, QSO points, multipliers |
 | `HstResults.txt` | HST results |
 | `MorseRunner.wav` | the recording of the last session (Settings → Record audio) |
+
+The files of earlier versions (folders named `MorseRunner`) are moved here on the first start.
 
 A few options exist only in the INI file:
 
@@ -179,8 +208,13 @@ Morse Runner — симулятор CW-контеста: pile-up, приём п�
 на Linux, macOS и Windows (MSYS2), тесты — `make test`.
 
 Позывной задаётся в настройках (шестерёнка или `Ctrl+,`), режим выбирается в заголовке окна,
-старт — клавишей Enter. Дальше Enter ведёт QSO: CQ → позывной корреспондента и контрольный
-номер → TU и запись в лог. Горячие клавиши работают и в русской раскладке.
+старт — клавишей Enter, `Ctrl+F9` сразу запускает HST. Дальше Enter ведёт QSO: CQ → позывной
+корреспондента и контрольный номер → TU и запись в лог. Горячие клавиши работают и в русской
+раскладке.
+
+Свои списки позывных (`.dta` Super Check Partial или текст, позывной в строке) добавляются в
+настройках, блок **Call list**: так можно заранее привыкнуть к позывным конкретного соревнования,
+например чемпионата России на КВ.
 
 ## License
 

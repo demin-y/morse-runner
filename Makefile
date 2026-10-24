@@ -147,12 +147,13 @@ run: $(TARGET)
 
 # ---- install ------------------------------------------------------------------
 install: $(TARGET)
-	install -d $(DESTDIR)$(PREFIX)/bin
-	install -m 755 $(TARGET) $(DESTDIR)$(PREFIX)/bin/
+ifeq ($(PLATFORM),macos)
+	$(error make install is not supported on macOS: run build/morserunner)
+endif
+	install -Dm755 $(TARGET) $(DESTDIR)$(PREFIX)/bin/morserunner$(EXE)
 ifeq ($(PLATFORM),linux)
-	install -d $(DESTDIR)$(PREFIX)/share/applications $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps
-	install -m 644 res/morserunner.desktop $(DESTDIR)$(PREFIX)/share/applications/
-	install -m 644 res/morserunner.svg $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/
+	install -Dm644 res/morserunner.desktop $(DESTDIR)$(PREFIX)/share/applications/morserunner.desktop
+	install -Dm644 res/morserunner.svg $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/morserunner.svg
 endif
 
 uninstall:

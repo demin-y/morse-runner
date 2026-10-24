@@ -98,6 +98,10 @@ struct App {
     GtkWidget* sLids;
     GtkWidget* sDuration;
     GtkWidget* sSaveWav;
+    GtkWidget* sCallList;
+    GtkWidget* sCallInfo;
+    GtkWidget* sAddList;
+    GtkWidget* sRemoveList;
     GSimpleAction* playAction;
 };
 
@@ -114,6 +118,7 @@ static void update_title(App* a);
 static void update_receiver(App* a);
 static void show_placeholder(App* a);
 static void focus_call(App* a);
+static void refresh_call_lists(App* a);
 
 //------------------------------------------------------------------------------
 //                                  helpers
@@ -483,11 +488,16 @@ static bool on_key_press(App* a, GdkEventKey* ev)
         send_msg(a, FKEY_MSG[keyval - GDK_KEY_F1]);
         return true;
     case GDK_KEY_F9:
-        if (ctrl || alt) change_speed(a, -1);
-        else if (!is_running(a)) run(a, selected_mode(a));
+        // as in the original program: Ctrl+F9 starts the HST competition
+        if (is_running(a) || alt) return true;
+        if (ctrl) {
+            select_mode(a, RM_HST - RM_PILEUP);
+            run(a, RM_HST);
+        } else {
+            run(a, selected_mode(a));
+        }
         return true;
     case GDK_KEY_F10:
-        if (ctrl || alt) change_speed(a, +1);
         return true;   // no menu bar
     case GDK_KEY_F11:
         wipe_boxes(a);
@@ -502,11 +512,12 @@ static bool on_key_press(App* a, GdkEventKey* ev)
         if (!is_running(a)) run(a, selected_mode(a));
         else process_enter(a, ctrl || shift || alt);
         return true;
+    // Alt+Up/Down too: on macOS Ctrl+Up/Down belong to Mission Control
     case GDK_KEY_Up: case GDK_KEY_KP_Up:
-        if (ctrl) change_bandwidth(a, +50); else inc_rit(a, +50);
+        if (ctrl || alt) change_bandwidth(a, +50); else inc_rit(a, +50);
         return true;
     case GDK_KEY_Down: case GDK_KEY_KP_Down:
-        if (ctrl) change_bandwidth(a, -50); else inc_rit(a, -50);
+        if (ctrl || alt) change_bandwidth(a, -50); else inc_rit(a, -50);
         return true;
     case GDK_KEY_Page_Up: case GDK_KEY_KP_Page_Up:
         change_speed(a, +1);
@@ -709,9 +720,10 @@ static void show_shortcuts(App* a)
     };
     static const ShortcutItem radio[] = {
         { "Up Down", "RIT ±50 Hz" },
-        { "<Ctrl>Up <Ctrl>Down", "Bandwidth ±50 Hz" },
+        { "<Ctrl>Up <Ctrl>Down <Alt>Up <Alt>Down", "Bandwidth ±50 Hz" },
         { "Page_Up Page_Down", "Speed ±5 WPM" },
         { "F9 Return", "Start (when stopped)" },
+        { "<Ctrl>F9", "Start the HST competition (when stopped)" },
         { "<Ctrl>r", "Start / stop" },
         { "<Ctrl>1 <Ctrl>2 <Ctrl>3 <Ctrl>4", "Mode: Pile-Up, Single Calls, WPX, HST" },
         { "<Ctrl>comma", "Settings" },
@@ -983,6 +995,10 @@ static void update_controls(App* a)
     gtk_widget_set_sensitive(a->sName, stop);
     gtk_widget_set_sensitive(a->sDuration, stop);
     gtk_widget_set_sensitive(a->sSaveWav, stop);
+    // the call list cannot change during a run
+    gtk_widget_set_sensitive(a->sCallList, stop);
+    gtk_widget_set_sensitive(a->sAddList, stop);
+    gtk_widget_set_sensitive(a->sRemoveList, stop && a->tst.cfg.callList[0]);
     GtkWidget* conditions[] = { a->sQrn, a->sQrm, a->sQsb, a->sFlutter, a->sLids };
     for (int i = 0; i < 5; ++i) gtk_widget_set_sensitive(conditions[i], !compet);
     gtk_widget_set_sensitive(a->sActivity, mode != RM_HST);
@@ -1286,6 +1302,7 @@ static gboolean focus_settings(gpointer data)
 static void cb_popover_shown(GtkWidget* p, gpointer data)
 {
     (void)p;
+    refresh_call_lists(data);   // the user may have put files into the folder
     g_idle_add(focus_settings, data);
 }
 
@@ -1335,6 +1352,179 @@ static void cb_theme_changed(GSimpleAction* action, GVariant* value, gpointer da
     LOCK(a);
     a->tst.cfg.theme = (int)mode;
     UNLOCK(a);
+}
+
+//------------------------------------------------------------------------------
+//                                call lists
+//------------------------------------------------------------------------------
+// parses a Master.dta (Super Check Partial) or a text file, one call per line;
+// returns the number of calls, 0 if the file has none
+static int parse_call_list(CallList* calls, const char* path)
+{
+    gchar* data = NULL;
+    gsize size = 0;
+    int n = 0;
+    if (g_file_get_contents(path, &data, &size, NULL)) {
+        bool dta = g_str_has_suffix(path, ".dta") || g_str_has_suffix(path, ".DTA");
+        n = dta ? calls_parse_master_dta(calls, data, size) : calls_parse_text(calls, data);
+    }
+    g_free(data);
+    return n;
+}
+
+static void update_call_info(App* a)
+{
+    LOCK(a);
+    int n = (int)a->tst.calls.all->len;
+    UNLOCK(a);
+    char buf[64];
+    if (n) snprintf(buf, sizeof(buf), "%d calls", n);
+    else g_strlcpy(buf, "Random calls built from contest prefixes", sizeof(buf));
+    gtk_label_set_text(GTK_LABEL(a->sCallInfo), buf);
+}
+
+// fills the list of call lists and selects the current one
+static void refresh_call_lists(App* a)
+{
+    a->updating = true;
+    GtkComboBoxText* c = GTK_COMBO_BOX_TEXT(a->sCallList);
+    gtk_combo_box_text_remove_all(c);
+    gtk_combo_box_text_append(c, "", "Generated calls");
+    gchar** names = call_list_names();
+    for (gchar** n = names; *n; ++n) gtk_combo_box_text_append(c, *n, *n);
+    g_strfreev(names);
+    if (!gtk_combo_box_set_active_id(GTK_COMBO_BOX(c), a->tst.cfg.callList)) gtk_combo_box_set_active(GTK_COMBO_BOX(c), 0);
+    a->updating = false;
+}
+
+// the stations take their calls from this list from now on; "" = generated calls
+static void use_call_list(App* a, const char* name, bool report)
+{
+    CallList calls;
+    calls_init(&calls);
+    gchar* path = call_list_path(name);
+    if (name[0] && (!path || !parse_call_list(&calls, path))) {
+        if (report) {
+            gchar* msg = g_strdup_printf("No callsigns could be read from %s.", name);
+            show_error(a, msg);
+            g_free(msg);
+        }
+        name = "";
+    }
+    g_free(path);
+
+    char selected[NAME_LEN];
+    g_strlcpy(selected, name, sizeof(selected));   // name may be cfg.callList itself
+    LOCK(a);
+    CallList old = a->tst.calls;
+    a->tst.calls = calls;
+    g_strlcpy(a->tst.cfg.callList, selected, sizeof(a->tst.cfg.callList));
+    UNLOCK(a);
+    calls_free(&old);
+
+    a->updating = true;
+    if (!gtk_combo_box_set_active_id(GTK_COMBO_BOX(a->sCallList), selected))
+        gtk_combo_box_set_active(GTK_COMBO_BOX(a->sCallList), 0);
+    a->updating = false;
+    update_call_info(a);
+    update_controls(a);
+}
+
+static void cb_call_list_changed(GtkComboBox* c, gpointer data)
+{
+    App* a = data;
+    if (a->updating) return;
+    const char* id = gtk_combo_box_get_active_id(c);
+    use_call_list(a, id ? id : "", true);
+}
+
+static bool ask(App* a, const char* question, const char* yes)
+{
+    GtkWidget* dlg = gtk_message_dialog_new(GTK_WINDOW(a->window), GTK_DIALOG_MODAL, GTK_MESSAGE_QUESTION,
+                                            GTK_BUTTONS_NONE, "%s", question);
+    gtk_dialog_add_buttons(GTK_DIALOG(dlg), "Cancel", GTK_RESPONSE_CANCEL, yes, GTK_RESPONSE_ACCEPT, NULL);
+    bool ok = gtk_dialog_run(GTK_DIALOG(dlg)) == GTK_RESPONSE_ACCEPT;
+    gtk_widget_destroy(dlg);
+    return ok;
+}
+
+// copies a file chosen by the user into the calls folder and selects it
+static void add_call_list(App* a, const char* path)
+{
+    gchar* name = g_path_get_basename(path);
+    gchar* dest = g_build_filename(path_calls_dir(), name, NULL);
+    CallList check;
+    calls_init(&check);
+    gchar* data = NULL;
+    gsize size = 0;
+    GError* err = NULL;
+    if (!parse_call_list(&check, path)) {
+        gchar* msg = g_strdup_printf("%s is not a call list: no callsigns could be read from it.\n"
+                                     "Use a Super Check Partial file (.dta) or a text file with one call per line.", name);
+        show_error(a, msg);
+        g_free(msg);
+    } else if (strcmp(path, dest) != 0 && g_file_test(dest, G_FILE_TEST_EXISTS) &&
+               !ask(a, "A call list with this name already exists. Replace it?", "Replace")) {
+        // keep the old one
+    } else if (strcmp(path, dest) != 0 && (!g_file_get_contents(path, &data, &size, &err) ||
+                                           !g_file_set_contents(dest, data, (gssize)size, &err))) {
+        show_error(a, err->message);
+    } else {
+        refresh_call_lists(a);
+        use_call_list(a, name, true);
+    }
+    if (err) g_error_free(err);
+    g_free(data);
+    calls_free(&check);
+    g_free(dest);
+    g_free(name);
+}
+
+static void cb_add_list(GtkButton* b, gpointer data)
+{
+    (void)b;
+    App* a = data;
+    GtkFileChooserNative* fc = gtk_file_chooser_native_new("Add a Call List", GTK_WINDOW(a->window),
+                                                           GTK_FILE_CHOOSER_ACTION_OPEN, "Add", "Cancel");
+    GtkFileFilter* f = gtk_file_filter_new();
+    gtk_file_filter_set_name(f, "Call lists (*.dta, *.txt)");
+    const char* patterns[] = { "*.dta", "*.DTA", "*.txt", "*.TXT" };
+    for (size_t i = 0; i < G_N_ELEMENTS(patterns); ++i) gtk_file_filter_add_pattern(f, patterns[i]);
+    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(fc), f);
+    if (gtk_native_dialog_run(GTK_NATIVE_DIALOG(fc)) == GTK_RESPONSE_ACCEPT) {
+        gchar* path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(fc));
+        if (path) add_call_list(a, path);
+        g_free(path);
+    }
+    g_object_unref(fc);
+}
+
+static void cb_remove_list(GtkButton* b, gpointer data)
+{
+    (void)b;
+    App* a = data;
+    char name[NAME_LEN];
+    g_strlcpy(name, a->tst.cfg.callList, sizeof(name));
+    gchar* path = call_list_path(name);
+    gchar* question = g_strdup_printf("Delete the call list %s?", name);
+    if (path && ask(a, question, "Delete")) {
+        if (g_remove(path) != 0) {
+            gchar* msg = g_strdup_printf("%s could not be deleted.", path);
+            show_error(a, msg);
+            g_free(msg);
+        } else {
+            use_call_list(a, "", false);
+            refresh_call_lists(a);
+        }
+    }
+    g_free(question);
+    g_free(path);
+}
+
+static void cb_list_folder(GtkButton* b, gpointer data)
+{
+    (void)b;
+    show_uri(data, path_calls_dir());
 }
 
 //------------------------------------------------------------------------------
@@ -1397,6 +1587,30 @@ static GtkWidget* build_settings(App* a)
     gtk_widget_set_halign(note, GTK_ALIGN_START);
     gtk_widget_set_margin_top(note, 8);
     gtk_grid_attach(GTK_GRID(right), note, 0, r++, 2, 1);
+
+    setting_header(right, r++, "CALL LIST");
+    a->sCallList = gtk_combo_box_text_new();
+    gtk_widget_set_tooltip_text(a->sCallList, "Where the calling stations take their callsigns from");
+    gtk_grid_attach(GTK_GRID(right), a->sCallList, 0, r++, 2, 1);
+    a->sCallInfo = gtk_label_new(NULL);
+    add_class(a->sCallInfo, "mr-placeholder");
+    gtk_widget_set_halign(a->sCallInfo, GTK_ALIGN_START);
+    gtk_grid_attach(GTK_GRID(right), a->sCallInfo, 0, r++, 2, 1);
+    GtkWidget* listButtons = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    a->sAddList = gtk_button_new_with_label("Add…");
+    gtk_widget_set_tooltip_text(a->sAddList, "Copy a call list file into the program's calls folder");
+    a->sRemoveList = gtk_button_new_with_label("Remove");
+    gtk_widget_set_tooltip_text(a->sRemoveList, "Delete the selected call list file");
+    GtkWidget* folder = gtk_button_new_from_icon_name("folder-open-symbolic", GTK_ICON_SIZE_BUTTON);
+    gtk_widget_set_tooltip_text(folder, "Open the calls folder");
+    gtk_box_pack_start(GTK_BOX(listButtons), a->sAddList, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(listButtons), a->sRemoveList, FALSE, FALSE, 0);
+    gtk_box_pack_end(GTK_BOX(listButtons), folder, FALSE, FALSE, 0);
+    gtk_grid_attach(GTK_GRID(right), listButtons, 0, r++, 2, 1);
+    g_signal_connect(a->sCallList, "changed", G_CALLBACK(cb_call_list_changed), a);
+    g_signal_connect(a->sAddList, "clicked", G_CALLBACK(cb_add_list), a);
+    g_signal_connect(a->sRemoveList, "clicked", G_CALLBACK(cb_remove_list), a);
+    g_signal_connect(folder, "clicked", G_CALLBACK(cb_list_folder), a);
 
     GtkWidget* spins[] = { a->sWpm, a->sActivity, a->sDuration };
     for (int i = 0; i < 3; ++i) g_signal_connect(spins[i], "value-changed", G_CALLBACK(cb_setting_changed), a);
@@ -1495,7 +1709,7 @@ static void build_actions(App* a, GtkApplication* gtkApp)
 
     const char* runAccels[] = { "<Primary>r", NULL };
     const char* settingsAccels[] = { "<Primary>comma", NULL };
-    const char* shortcutAccels[] = { "<Primary>question", "<Primary>F1", NULL };
+    const char* shortcutAccels[] = { "<Primary>question", NULL };
     gtk_application_set_accels_for_action(gtkApp, "win.run", runAccels);
     gtk_application_set_accels_for_action(gtkApp, "win.settings", settingsAccels);
     gtk_application_set_accels_for_action(gtkApp, "win.shortcuts", shortcutAccels);
@@ -1699,23 +1913,6 @@ static GtkWidget* build_receiver(App* a)
     return row;
 }
 
-// Master.dta (Super Check Partial) or calls.txt in the folder, the number of calls loaded
-static int load_call_list(CallList* calls, const char* dir)
-{
-    static const char* names[] = { "Master.dta", "MASTER.DTA", "calls.txt" };
-    int n = 0;
-    for (size_t i = 0; i < G_N_ELEMENTS(names) && !n; ++i) {
-        gchar* path = g_build_filename(dir, names[i], NULL);
-        gchar* data = NULL;
-        gsize size = 0;
-        if (g_file_get_contents(path, &data, &size, NULL))
-            n = i < 2 ? calls_parse_master_dta(calls, data, size) : calls_parse_text(calls, data);
-        g_free(data);
-        g_free(path);
-    }
-    return n;
-}
-
 App* app_new(GtkApplication* gtkApp)
 {
     App* a = g_new0(App, 1);
@@ -1727,13 +1924,6 @@ App* app_new(GtkApplication* gtkApp)
     contest_set_wpm(&a->tst, a->tst.cfg.wpm);
     contest_apply_bandwidth(&a->tst);
     contest_apply_pitch(&a->tst);
-
-    // a call list in the data folder or in the current folder replaces the generated calls
-    if (!load_call_list(&a->tst.calls, path_data_dir())) {
-        gchar* cwd = g_get_current_dir();
-        load_call_list(&a->tst.calls, cwd);
-        g_free(cwd);
-    }
 
     install_css();
     theme_init();
@@ -1766,6 +1956,8 @@ App* app_new(GtkApplication* gtkApp)
     g_signal_connect(a->window, "delete-event", G_CALLBACK(cb_delete), a);
     g_signal_connect(a->window, "destroy", G_CALLBACK(cb_destroy), a);
 
+    refresh_call_lists(a);
+    use_call_list(a, a->tst.cfg.callList, false);
     sync_settings_widgets(a);
     update_controls(a);
     update_title(a);

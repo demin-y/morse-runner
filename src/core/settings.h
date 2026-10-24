@@ -41,6 +41,7 @@ typedef struct {
     int rit;            // Hz, -500..500
     int monitorDb;      // self-monitor level, -60..+20 dB
     bool callsFromKeyer;
+    char callList[NAME_LEN];       // UI: the file name of the call list, "" = generated calls
 
     // band conditions
     int activity;       // 1..9
